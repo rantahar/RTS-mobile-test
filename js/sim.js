@@ -6,18 +6,26 @@
 //   { type: 'mine', nodeId, hqId, phase, t }
 //       phase: 'toNode' -> 'mining' -> 'toHq' -> repeat
 //
-// Movement follows a SMOOTHED route (unit.route = [{x,y},...]): the A* hex
-// path is string-pulled against structure footprints, so units walk straight
-// and only turn at obstacle corners (Path.route). Collisions stay hex-based:
-// a unit owns the hex under its center (GameMap.unitOcc) and, while moving,
-// reserves the hex a little ahead of it before entering. If that hex is held
-// by someone else the unit waits ~0.5s, then replans around them.
+// Movement is two-level:
+//   unit.coarse = [{x,y},...]  macro-grid waypoints for the whole trip,
+//                              planned once per command (Path.coarse)
+//   unit.route  = [{x,y},...]  smoothed small-grid leg to the next coarse
+//                              waypoint (Path.fineRoute), capped at
+//                              LEG_MAX_PX
+// On collision only the fine leg is replanned — the coarse route survives.
+// Collisions are hex-based: a unit owns the hex under its center
+// (GameMap.unitOcc) and, while moving, reserves the hex a little ahead of it
+// before entering. If that hex is held by someone else the unit waits ~0.5s,
+// then replans the leg around them.
 const Sim = {
   _last: null,
-  REPATH_WAIT: 0.5,           // seconds to wait when blocked before replanning
+  REPATH_WAIT: 0.1,           // blocked "thinking time" before replanning the leg
   ADJACENT_PX: CONFIG.TILE * 1.10, // "standing at the structure" distance
+  LEG_MAX_PX: null,           // max fine-leg length (< 9 hex units), set in start()
+  MAX_LEG_FAILS: 3,           // consecutive failed legs before a full replan
 
   start() {
+    this.LEG_MAX_PX = Hex.S * 8.5; // "coarse points less than 9 units away"
     requestAnimationFrame((ts) => this._frame(ts));
   },
 
@@ -39,13 +47,12 @@ const Sim = {
     const c = e.cmd;
 
     if (c.type === 'move') {
-      if (!e.route) {
+      if (!e.coarse) {
         const dest = Hex.nearestFree(c.col, c.row, e, null);
-        const r = dest && Path.route(e, dest);
-        if (!r) { this.stopUnit(e); return; } // unreachable: give up
-        e.route = r;
+        if (!dest) { this.stopUnit(e); return; } // nowhere to stand: give up
+        e.coarse = Path.coarse(e, dest);
       }
-      const st = this.moveAlong(e, dt);
+      const st = this.travel(e, c, dt);
       if (st === 'arrived') this.stopUnit(e);
       else if (st === 'blocked') this.blockedWait(e, c, dt);
 
@@ -81,9 +88,52 @@ const Sim = {
     }
   },
 
-  // Advance along the unit's smoothed route. Returns 'arrived' | 'moving' |
-  // 'blocked'. Before moving, the hex a bit ahead of the unit is reserved so
-  // two units never converge on the same spot.
+  // Drive the unit through its coarse waypoints, planning one fine leg at a
+  // time. Returns 'arrived' | 'moving' | 'blocked'.
+  travel(e, c, dt) {
+    if (!e.route || !e.route.length) {
+      if (!e.coarse || !e.coarse.length) return 'arrived';
+      if ((c.cool || 0) > 0) { c.cool -= dt; return 'blocked'; } // failed leg cooldown
+      this.trimCoarse(e);
+      const t = e.coarse[0];
+      const h0 = Hex.fromWorld(t.x, t.y);
+      const th = Hex.free(h0.col, h0.row, e) ? h0
+               : Hex.nearestFree(h0.col, h0.row, e, null);
+      const r = th && Path.fineRoute(e, th);
+      if (!r || !r.length) {
+        if (r && e.coarse.length === 1) { e.coarse = []; return 'arrived'; } // already there
+        c.fails = (c.fails || 0) + 1;
+        c.cool = this.REPATH_WAIT;
+        if (c.fails > this.MAX_LEG_FAILS) { c.fails = 0; e.coarse = null; } // full replan
+        return 'blocked';
+      }
+      c.fails = 0;
+      e.route = r;
+    }
+    const st = this.moveAlong(e, dt);
+    if (st === 'arrived') {
+      e.coarse.shift(); // leg complete
+      return e.coarse.length ? 'moving' : 'arrived';
+    }
+    return st;
+  },
+
+  // Skip ahead in the coarse list: drop the current target while the next
+  // one is within the leg cap and visible past structures. Keeps legs short
+  // (collision repairs stay cheap) without zigzagging through every macro
+  // center on open ground.
+  trimCoarse(e) {
+    while (e.coarse.length > 1) {
+      const nxt = e.coarse[1];
+      if (Math.hypot(nxt.x - e.x, nxt.y - e.y) <= this.LEG_MAX_PX &&
+          Path.los({ x: e.x, y: e.y }, nxt, e, false)) e.coarse.shift();
+      else break;
+    }
+  },
+
+  // Advance along the unit's smoothed fine leg. Returns 'arrived' | 'moving'
+  // | 'blocked'. Before moving, the hex a bit ahead of the unit is reserved
+  // so two units never converge on the same spot.
   moveAlong(e, dt) {
     if (!e.route || !e.route.length) return 'arrived';
     const wp = e.route[0];
@@ -130,13 +180,15 @@ const Sim = {
     if (this.distToRect(e, s) <= this.ADJACENT_PX) {
       this.clearPath(e);
       c.wait = 0;
+      c.fails = 0;
       return true;
     }
-    if (!e.route) {
+    if (!e.coarse || !e.coarse.length) {
       const t = Hex.bestAdjacent(s, e.hex.col, e.hex.row, e);
-      e.route = (t && Path.route(e, t)) || [];
+      if (!t) { this.blockedWait(e, c, dt); return false; } // fully crowded: retry
+      e.coarse = Path.coarse(e, t);
     }
-    const st = this.moveAlong(e, dt);
+    const st = this.travel(e, c, dt);
     if (st !== 'moving') this.blockedWait(e, c, dt); // blocked, or arrived short
     return false;
   },
@@ -152,7 +204,7 @@ const Sim = {
     c.wait = (c.wait || 0) + dt;
     if (c.wait > this.REPATH_WAIT) {
       c.wait = 0;
-      this.clearPath(e); // forces a replan around whatever is in the way
+      this.clearLeg(e); // replan just the fine leg; the coarse route survives
     }
   },
 
@@ -171,13 +223,20 @@ const Sim = {
     e.tx = t.tx; e.ty = t.ty;
   },
 
-  // Drop the unit's route and any hex reservation beyond where it stands.
-  clearPath(e) {
+  // Drop the current fine leg and any hex reservation beyond where the unit
+  // stands. The coarse route is kept.
+  clearLeg(e) {
     e.route = null;
     e.resHex = null;
     for (const [idx, id] of GameMap.unitOcc) {
       if (id === e.id && idx !== e.curHex) GameMap.unitOcc.delete(idx);
     }
+  },
+
+  // Full clear: fine leg AND coarse route (new command, stop, arrival).
+  clearPath(e) {
+    this.clearLeg(e);
+    e.coarse = null;
   },
 
   stopUnit(e) {
