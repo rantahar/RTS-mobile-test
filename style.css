@@ -103,6 +103,17 @@ body {
 .entity.worker .shape, .entity.worker .detail { stroke: #6fd3ff; }
 .entity.worker .shape { fill: rgba(111, 211, 255, 0.08); }
 
+.entity.barracks .shape, .entity.barracks .detail { stroke: #9d8cff; }
+.entity.barracks .shape { fill: rgba(157, 140, 255, 0.06); }
+
+.entity.soldier .shape, .entity.soldier .detail { stroke: #ff9d7a; }
+.entity.soldier .shape { fill: rgba(255, 157, 122, 0.08); }
+
+/* Construction sites: dashed outline until built, progress bar above */
+.entity.unbuilt .shape, .entity.unbuilt .detail { stroke-dasharray: 6 5; opacity: 0.75; }
+.sitebar .pbg { fill: #232a36; stroke: #3a4658; stroke-width: 1; }
+.sitebar .pfill { fill: #5fc8a8; stroke: none; }
+
 /* Selection highlight */
 .entity .selmark {
   display: none;
@@ -122,6 +133,15 @@ body {
 .pulse.move { stroke: #5fc8a8; }
 .pulse.mine { stroke: #e2b04e; }
 .pulse.goto { stroke: #6fd3ff; }
+
+/* Placement attempt feedback */
+.place-flash rect { fill: none; stroke-width: 2; stroke-dasharray: 6 4; vector-effect: non-scaling-stroke; }
+.place-flash.ok rect { stroke: #5fc8a8; }
+.place-flash.bad rect { stroke: #ff6f6f; }
+
+/* Dynamic action bar (bottom, selection-driven) */
+.actions { display: flex; gap: 6px; flex: 0 0 auto; }
+.actions .btn { white-space: nowrap; }
 
 /* Box-select rubber band */
 #boxsel {

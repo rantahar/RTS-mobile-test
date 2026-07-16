@@ -5,6 +5,7 @@ const Game = {
   overlay: null,
   boxEl: null,
   ore: 0,
+  placing: null, // structure type being placed (build button armed), or null
 
   init() {
     this.svg = document.getElementById('view');
@@ -24,6 +25,10 @@ const Game = {
       if (e.kind === 'structure' && Render.showHex) Render.drawGrid();
     };
     Sim.hooks.deposit = (n) => this.addOre(n);
+    Sim.hooks.completed = (s) => {
+      this.pulse(s.x, s.y, 'goto');
+      this.updateSelInfo(); // a selected site may now offer training
+    };
     Selection.onChange = () => this.updateSelInfo();
 
     this.spawnStartLayout();
@@ -76,6 +81,7 @@ const Game = {
   // ---- Tap: select when nothing is selected, otherwise command ----
 
   smartTap(w) {
+    if (this.placing) { this.tryPlace(w); return; } // armed build button
     const slop = 12 / Camera.zoom; // finger-friendly hit slop in world px
     const hit = Entities.at(w.x, w.y, slop);
     const sel = Selection.entities;
@@ -136,10 +142,9 @@ const Game = {
 
   // ---- Training ----
 
-  // Train whatever unit the selected building's type says it trains.
-  trainUnit() {
-    const b = Selection.entities.find(e => e.def.trains);
-    if (!b) return;
+  // Train the unit type a specific building's type says it trains.
+  trainUnit(b) {
+    if (!b || !b.def.trains || b.underConstruction) return;
     const def = Types[b.def.trains];
     if (this.ore < def.cost) return;
     const hc = Hex.fromWorld(b.x, b.y + (b.h / 2) * CONFIG.TILE); // bias toward the door side
@@ -151,13 +156,132 @@ const Game = {
     if (u) this.pulse(u.x, u.y, 'goto');
   },
 
-  updateTrainBtn() {
-    const btn = document.getElementById('btn-train');
-    if (!btn) return;
-    const b = Selection.entities.find(e => e.def && e.def.trains);
-    const def = b && Types[b.def.trains];
-    if (def) btn.textContent = `${def.name} ◆${def.cost}`;
-    btn.disabled = !(def && this.ore >= def.cost);
+  // ---- Building placement ----
+
+  // Build button tapped: arm (or disarm) placement; the next map tap places.
+  togglePlacing(type) {
+    this.placing = this.placing === type ? null : type;
+    this.updateSelInfo();
+  },
+
+  cancelPlacing() {
+    if (!this.placing) return;
+    this.placing = null;
+    this.updateSelInfo();
+  },
+
+  // A tap landed while a build button is armed: snap the footprint so its
+  // center is under the finger, validate, pay, spawn the site, and send the
+  // selected builders to work on it.
+  tryPlace(w) {
+    const type = this.placing;
+    const def = Types[type];
+    const tx = Math.round(w.x / CONFIG.TILE - def.w / 2);
+    const ty = Math.round(w.y / CONFIG.TILE - def.h / 2);
+    if (!Entities.canPlace(type, tx, ty)) {
+      this.flashFootprint(def, tx, ty, false); // stay armed, let them re-tap
+      return;
+    }
+    if (this.ore < def.cost) { this.cancelPlacing(); return; }
+    this.addOre(-def.cost);
+    const site = Entities.spawnStructure(type, tx, ty, 0, true);
+    this.placing = null;
+    const builders = Selection.entities.filter(u =>
+      u.kind === 'unit' && (u.def.builds || []).includes(type));
+    for (const u of builders) {
+      Sim.clearPath(u);
+      u.cmd = { type: 'build', siteId: site.id };
+    }
+    this.flashFootprint(def, tx, ty, true);
+    this.updateSelInfo();
+  },
+
+  // Brief footprint outline at a placement attempt (green ok / red invalid).
+  flashFootprint(def, tx, ty, ok) {
+    const T = CONFIG.TILE;
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('class', `place-flash ${ok ? 'ok' : 'bad'}`);
+    g.innerHTML = `<rect x="${tx * T}" y="${ty * T}" width="${def.w * T}" height="${def.h * T}" rx="6">
+      <animate attributeName="opacity" from="1" to="0" dur="0.6s" fill="freeze"/></rect>`;
+    this.overlay.appendChild(g);
+    setTimeout(() => g.remove(), 650);
+  },
+
+  // ---- Dynamic action bar: buttons come from what is selected ----
+
+  // Describe the buttons the current selection should offer. Structure types
+  // that train get a train button; units that build get build buttons; any
+  // unit selected gets Stop.
+  actionButtons() {
+    const btns = [];
+    const sel = Selection.entities;
+    const units = sel.filter(e => e.kind === 'unit');
+
+    const buildable = new Set();
+    for (const u of units) for (const t of u.def.builds || []) buildable.add(t);
+    for (const t of buildable) {
+      const def = Types[t];
+      btns.push({
+        id: `btn-build-${t}`,
+        label: `${def.name} ◆${def.cost}`,
+        pressed: this.placing === t,
+        disabled: this.ore < def.cost,
+        onTap: () => this.togglePlacing(t),
+      });
+    }
+
+    const trainers = new Map(); // one button per building type; first one trains
+    for (const e of sel) {
+      if (e.kind === 'structure' && e.def.trains && !e.underConstruction &&
+          !trainers.has(e.type)) trainers.set(e.type, e);
+    }
+    for (const b of trainers.values()) {
+      const def = Types[b.def.trains];
+      btns.push({
+        id: `btn-train-${b.def.trains}`,
+        label: `${def.name} ◆${def.cost}`,
+        disabled: this.ore < def.cost,
+        onTap: () => this.trainUnit(b),
+      });
+    }
+
+    if (units.length) {
+      btns.push({
+        id: 'btn-stop',
+        label: 'Stop',
+        onTap: () => { for (const u of units) Sim.stopUnit(u); },
+      });
+    }
+    return btns;
+  },
+
+  // Rebuild the bar only when the button SET changes; otherwise just refresh
+  // disabled/pressed state, so an ore tick mid-tap can't eat the press.
+  updateActionBar() {
+    const bar = document.getElementById('actions');
+    if (!bar) return;
+    const btns = this.actionButtons();
+    const key = btns.map(b => b.id + b.label).join('|');
+    if (key !== this._barKey) {
+      this._barKey = key;
+      bar.innerHTML = '';
+      this._barTaps = btns.map(b => b.onTap);
+      btns.forEach((b, i) => {
+        const el = document.createElement('button');
+        el.className = 'btn';
+        el.id = b.id;
+        el.textContent = b.label;
+        el.addEventListener('click', () => this._barTaps[i]());
+        bar.appendChild(el);
+      });
+    } else {
+      this._barTaps = btns.map(b => b.onTap); // rebind to current entities
+    }
+    btns.forEach((b, i) => {
+      const el = bar.children[i];
+      el.disabled = !!b.disabled;
+      el.setAttribute('aria-pressed', String(!!b.pressed));
+    });
   },
 
   // Brief expanding-ring feedback at a command target.
@@ -206,19 +330,32 @@ const Game = {
   updateOre() {
     const el = document.getElementById('ore');
     if (el) el.textContent = `◆ ${this.ore}`;
-    this.updateTrainBtn();
+    this.updateActionBar();
   },
 
   updateSelInfo() {
-    this.updateTrainBtn();
+    // Disarm placement if the selection can no longer build the armed type.
+    if (this.placing) {
+      const can = Selection.entities.some(u =>
+        u.kind === 'unit' && (u.def.builds || []).includes(this.placing));
+      if (!can) this.placing = null;
+    }
+    this.updateActionBar();
     const el = document.getElementById('selinfo');
     if (!el) return;
+    if (this.placing) {
+      el.textContent = `Tap map: place ${Types[this.placing].name}`;
+      return;
+    }
     const es = Selection.entities;
     if (!es.length) { el.textContent = ''; return; }
     const counts = {};
-    for (const e of es) counts[e.type] = (counts[e.type] || 0) + 1;
+    for (const e of es) {
+      const name = e.def.name + (e.underConstruction ? ' (site)' : '');
+      counts[name] = (counts[name] || 0) + 1;
+    }
     el.textContent = Object.entries(counts)
-      .map(([t, n]) => n > 1 ? `${Types[t].name} ×${n}` : Types[t].name)
+      .map(([name, n]) => n > 1 ? `${name} ×${n}` : name)
       .join(', ');
   },
 
@@ -249,17 +386,11 @@ const Game = {
       const on = Render.toggleHex();
       e.currentTarget.setAttribute('aria-pressed', String(on));
     });
-    // Stop: halt commands of selected units, keep the selection.
-    document.getElementById('btn-stop').addEventListener('click', () => {
-      for (const e of Selection.entities) if (e.kind === 'unit') Sim.stopUnit(e);
-    });
-    // Deselect: clear the selection (long tap does the same).
+    // Deselect: clear the selection (long tap does the same). Also disarms
+    // an armed build button. Stop/Train/Build live in the dynamic action bar.
     document.getElementById('btn-deselect').addEventListener('click', () => {
+      this.cancelPlacing();
       Selection.clear();
-    });
-    // Train a unit at the selected building (type-driven).
-    document.getElementById('btn-train').addEventListener('click', () => {
-      this.trainUnit();
     });
   },
 

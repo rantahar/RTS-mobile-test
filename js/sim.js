@@ -19,7 +19,8 @@
 const Sim = {
   // Outbound notifications; the app layer (Game) assigns these.
   hooks: {
-    deposit(amount, unit) {}, // a worker delivered `amount` ore
+    deposit(amount, unit) {},  // a worker delivered `amount` ore
+    completed(structure) {},   // a construction site finished
   },
   REPATH_WAIT: 0.1,           // blocked "thinking time" before replanning the leg
   ADJACENT_PX: CONFIG.TILE * 1.10, // "standing at the structure" distance
@@ -202,5 +203,14 @@ const Sim = {
 
   setCarrying(e, on) {
     e.carrying = on; // View.sync renders the cargo dot
+  },
+
+  // A construction site reached full progress: it becomes a working building.
+  // (Builders notice underConstruction flipped and stop on their next tick.)
+  completeStructure(s) {
+    if (!s.underConstruction) return;
+    s.underConstruction = false;
+    s.progress = s.def.buildTime;
+    this.hooks.completed(s);
   },
 };

@@ -49,6 +49,25 @@ const Types = {
     },
   },
 
+  barracks: {
+    kind: 'structure',
+    name: 'Barracks',
+    w: 3, h: 3,
+    trains: 'soldier',
+    cost: CONFIG.BARRACKS_COST,   // ore to place the construction site
+    buildTime: CONFIG.BARRACKS_BUILD, // worker-seconds to finish it
+    svg(e) {
+      const T = CONFIG.TILE;
+      const h = (e.w * T) / 2;
+      const i = h - 5;
+      return `
+        <rect class="selmark" x="${-h - 4}" y="${-h - 4}" width="${2 * h + 8}" height="${2 * h + 8}" rx="6"/>
+        <rect class="shape" x="${-i}" y="${-i}" width="${2 * i}" height="${2 * i}" rx="8"/>
+        <path class="detail" d="M${-i + 8} 16 L0 ${-i + 10} L${i - 8} 16"/>
+        <path class="detail" d="M-9 ${i - 6} L-9 12 A9 9 0 0 1 9 12 L9 ${i - 6}"/>`;
+    },
+  },
+
   node: {
     kind: 'structure',
     name: 'Resource',
@@ -72,6 +91,7 @@ const Types = {
     radius: 0.42,               // body radius in tiles
     speed: CONFIG.WORKER_SPEED, // world px per second
     cost: CONFIG.WORKER_COST,
+    builds: ['barracks'],       // structures this unit can construct
     svg(e) {
       const r = e.r;
       return `
@@ -85,6 +105,9 @@ const Types = {
     // A tap-command landed on `hit` — what should this worker do about it?
     // Return a command object, or null to fall back to a plain group move.
     orderAt(u, hit) {
+      if (hit.kind === 'structure' && hit.underConstruction && hit.owner === u.owner) {
+        return { type: 'build', siteId: hit.id }; // resume/help construction
+      }
       if (hit.def.mineable) {
         const depot = Entities.list.find(s => s.def.depot && s.owner === u.owner);
         return { type: 'mine', nodeId: hit.id, hqId: depot && depot.id, phase: 'toNode' };
@@ -123,6 +146,42 @@ const Types = {
           }
         }
       },
+
+      // { type:'build', siteId } — walk to a construction site and work on it.
+      // Each adjacent worker contributes dt per tick, so extra builders help.
+      build(e, c, dt) {
+        const s = Entities.byId.get(c.siteId);
+        if (!s || !s.underConstruction) { Sim.stopUnit(e); return; } // done or gone
+        if (Sim.approachRect(e, c, s, dt)) {
+          s.progress += dt;
+          if (s.progress >= s.def.buildTime) Sim.completeStructure(s);
+        }
+      },
     },
+  },
+
+  soldier: {
+    kind: 'unit',
+    name: 'Soldier',
+    radius: 0.42,
+    speed: CONFIG.SOLDIER_SPEED,
+    cost: CONFIG.SOLDIER_COST,
+    svg(e) {
+      const r = e.r;
+      return `
+        <circle class="selmark" r="${r + 4}"/>
+        <circle class="shape" r="${r}"/>
+        <path class="detail" d="M-6.5 7.5 L6.5 -6.5"/>
+        <path class="detail" d="M-5.5 1.5 L0.5 7.5"/>
+        <circle class="detail" cx="-7.5" cy="8.5" r="1.6"/>`;
+    },
+
+    // No attack yet: structures are a go-to, everything else a plain move.
+    orderAt(u, hit) {
+      if (hit.kind === 'structure') return { type: 'moveRect', targetId: hit.id };
+      return null;
+    },
+
+    commands: { ...UnitCommands },
   },
 };

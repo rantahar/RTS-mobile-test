@@ -16,7 +16,10 @@ const Entities = {
     removed(e) {},
   },
 
-  spawnStructure(type, tx, ty, owner = 0) {
+  // underConstruction: spawn as a construction site — it blocks the map like
+  // a finished building, but must be built up by workers (see the worker's
+  // `build` command) before it works. Sim.completeStructure finishes it.
+  spawnStructure(type, tx, ty, owner = 0, underConstruction = false) {
     const def = Types[type];
     const T = CONFIG.TILE;
     const w = def.w, h = def.h;
@@ -28,6 +31,8 @@ const Entities = {
       tx, ty, w, h,
       x: (tx + w / 2) * T,
       y: (ty + h / 2) * T,
+      underConstruction,
+      progress: 0, // worker-seconds of construction done (sites only)
     };
     // Mark footprint tiles occupied (pathfinding obstacles).
     for (let y = ty; y < ty + h; y++)
@@ -69,6 +74,25 @@ const Entities = {
     this.byId.set(e.id, e);
     this.hooks.spawned(e);
     return e;
+  },
+
+  // Can a structure of this type be placed with its top-left tile at tx,ty?
+  // Footprint must be in bounds and unoccupied, and no unit may be standing
+  // inside it (it would be walled in).
+  canPlace(type, tx, ty) {
+    const def = Types[type];
+    for (let y = ty; y < ty + def.h; y++)
+      for (let x = tx; x < tx + def.w; x++) {
+        if (!GameMap.inBounds(x, y)) return false;
+        if (GameMap.occupancy[GameMap.idx(x, y)] != null) return false;
+      }
+    const T = CONFIG.TILE;
+    const x0 = tx * T, y0 = ty * T, x1 = (tx + def.w) * T, y1 = (ty + def.h) * T;
+    for (const e of this.list) {
+      if (e.kind !== 'unit') continue;
+      if (e.x > x0 - e.r && e.x < x1 + e.r && e.y > y0 - e.r && e.y < y1 + e.r) return false;
+    }
+    return true;
   },
 
   // Remove a unit from the game (future: combat deaths).
