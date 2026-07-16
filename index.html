@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>RTS Mobile Test</title>
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css?v=2" />
 </head>
 <body>
   <!-- Top button row -->
@@ -40,20 +40,23 @@
        ORDER MATTERS: config first, then model layers (camera/map/hex/path/
        types/entities/selection/sim), then view/ui (render/view/actions/
        input), then game.js which wires everything. Keep tests/unit/run.js's
-       file list in sync when adding a module. -->
-  <script src="js/config.js"></script>
-  <script src="js/camera.js"></script>
-  <script src="js/map.js"></script>
-  <script src="js/hex.js"></script>
-  <script src="js/path.js"></script>
-  <script src="js/types.js"></script>
-  <script src="js/entities.js"></script>
-  <script src="js/selection.js"></script>
-  <script src="js/sim.js"></script>
-  <script src="js/render.js"></script>
-  <script src="js/view.js"></script>
-  <script src="js/actions.js"></script>
-  <script src="js/input.js"></script>
-  <script src="js/game.js"></script>
+       file list in sync when adding a module.
+       ?v=N is a cache buster: BUMP IT (all lines, same number) whenever any
+       js/css file changes, or phones mix stale cached scripts with a fresh
+       index.html and the game breaks at startup. -->
+  <script src="js/config.js?v=2"></script>
+  <script src="js/camera.js?v=2"></script>
+  <script src="js/map.js?v=2"></script>
+  <script src="js/hex.js?v=2"></script>
+  <script src="js/path.js?v=2"></script>
+  <script src="js/types.js?v=2"></script>
+  <script src="js/entities.js?v=2"></script>
+  <script src="js/selection.js?v=2"></script>
+  <script src="js/sim.js?v=2"></script>
+  <script src="js/render.js?v=2"></script>
+  <script src="js/view.js?v=2"></script>
+  <script src="js/actions.js?v=2"></script>
+  <script src="js/input.js?v=2"></script>
+  <script src="js/game.js?v=2"></script>
 </body>
 </html>

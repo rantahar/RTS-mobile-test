@@ -42,6 +42,10 @@ Plain classic scripts; **the `<script>` order in index.html is load-bearing**
 (config first, model modules, then view/UI, then game.js). Keep
 `tests/unit/run.js`'s file list in sync when adding a module.
 
+The script/style URLs carry a `?v=N` cache buster — **bump N in every line of
+index.html whenever any js/css file changes**. Without it, a browser can pair
+a fresh index.html with stale cached scripts and crash at startup.
+
 Model layer (DOM-free, headless-testable):
 
 - `js/config.js` — all tuning constants + the gesture→action map
