@@ -15,6 +15,7 @@ const Game = {
     Render.init();
     Entities.init();
     Input.init(this.svg, this.world);
+    Sim.hooks.deposit = (n) => this.addOre(n);
 
     this.spawnStartLayout();
 
@@ -35,9 +36,8 @@ const Game = {
   },
 
   spawnStartLayout() {
-    // Main building 5x5, resource node 2x2, a few workers 1x1.
-    Entities.spawnStructure('hq', 15, 18, 5, 5);
-    Entities.spawnStructure('node', 24, 14, 2, 2);
+    Entities.spawnStructure('hq', 15, 18);
+    Entities.spawnStructure('node', 24, 14);
     const tc = (tx, ty) => GameMap.tileToWorldCenter(tx, ty);
     let p = tc(22, 21); Entities.spawnUnit('worker', p.x, p.y);
     p = tc(23, 23); Entities.spawnUnit('worker', p.x, p.y);
@@ -64,43 +64,32 @@ const Game = {
     this.issueCommand(sel, hit, w);
   },
 
+  // Route a command tap: each unit's TYPE decides what to do about the
+  // target (def.orderAt); units with no specific reaction group-move to it.
   issueCommand(sel, hit, w) {
     const units = sel.filter(e => e.kind === 'unit');
 
-    // Resource node: workers mine it, other units just walk to it.
-    if (hit && hit.type === 'node') {
-      const hq = Entities.list.find(e => e.type === 'hq');
-      let any = false;
+    if (hit) {
+      const movers = [];
+      let commanded = false;
       for (const u of units) {
-        Sim.clearPath(u);
-        u.cmd = u.type === 'worker'
-          ? { type: 'mine', nodeId: hit.id, hqId: hq && hq.id, phase: 'toNode' }
-          : { type: 'moveRect', targetId: hit.id };
-        any = true;
+        if (u.id === hit.id) continue;
+        const cmd = u.def.orderAt && u.def.orderAt(u, hit);
+        if (cmd) {
+          Sim.clearPath(u);
+          u.cmd = cmd;
+          commanded = true;
+        } else {
+          movers.push(u);
+        }
       }
-      if (any) this.pulse(hit.x, hit.y, 'mine');
-      return;
-    }
-
-    // Structure: walk to its edge. (Later: rally, garrison, repair...)
-    if (hit && hit.kind === 'structure') {
-      for (const u of units) {
-        Sim.clearPath(u);
-        u.cmd = { type: 'moveRect', targetId: hit.id };
+      if (movers.length) this.moveGroup(movers, hit.x, hit.y);
+      if (commanded || movers.length) {
+        this.pulse(hit.x, hit.y, hit.def.mineable ? 'mine' : 'goto');
       }
-      if (units.length) this.pulse(hit.x, hit.y, 'goto');
       return;
     }
 
-    // Unit: go to it. (Later: attack if enemy, follow if friendly.)
-    if (hit && hit.kind === 'unit') {
-      const movers = units.filter(u => u.id !== hit.id);
-      this.moveGroup(movers, hit.x, hit.y);
-      if (movers.length) this.pulse(hit.x, hit.y, 'goto');
-      return;
-    }
-
-    // Ground: move command.
     if (units.length) {
       this.moveGroup(units, w.x, w.y);
       this.pulse(w.x, w.y, 'move');
@@ -124,23 +113,28 @@ const Game = {
 
   // ---- Training ----
 
-  trainWorker() {
-    const hq = Selection.entities.find(e => e.type === 'hq');
-    if (!hq || this.ore < CONFIG.WORKER_COST) return;
-    const hc = Hex.fromWorld(hq.x, hq.y + (hq.h / 2) * CONFIG.TILE); // bias toward the door side
-    const h = hc && Hex.bestAdjacent(hq, hc.col, hc.row, null);
+  // Train whatever unit the selected building's type says it trains.
+  trainUnit() {
+    const b = Selection.entities.find(e => e.def.trains);
+    if (!b) return;
+    const def = Types[b.def.trains];
+    if (this.ore < def.cost) return;
+    const hc = Hex.fromWorld(b.x, b.y + (b.h / 2) * CONFIG.TILE); // bias toward the door side
+    const h = hc && Hex.bestAdjacent(b, hc.col, hc.row, null);
     if (!h) return; // completely walled in
-    this.addOre(-CONFIG.WORKER_COST);
+    this.addOre(-def.cost);
     const c = Hex.centerOf(h.col, h.row);
-    const u = Entities.spawnUnit('worker', c.x, c.y);
+    const u = Entities.spawnUnit(b.def.trains, c.x, c.y, b.owner);
     if (u) this.pulse(u.x, u.y, 'goto');
   },
 
   updateTrainBtn() {
     const btn = document.getElementById('btn-train');
     if (!btn) return;
-    const hqSelected = Selection.entities.some(e => e.type === 'hq');
-    btn.disabled = !(hqSelected && this.ore >= CONFIG.WORKER_COST);
+    const b = Selection.entities.find(e => e.def && e.def.trains);
+    const def = b && Types[b.def.trains];
+    if (def) btn.textContent = `${def.name} ◆${def.cost}`;
+    btn.disabled = !(def && this.ore >= def.cost);
   },
 
   // Brief expanding-ring feedback at a command target.
@@ -198,11 +192,10 @@ const Game = {
     if (!el) return;
     const es = Selection.entities;
     if (!es.length) { el.textContent = ''; return; }
-    const names = { hq: 'Main Building', node: 'Resource', worker: 'Worker' };
     const counts = {};
     for (const e of es) counts[e.type] = (counts[e.type] || 0) + 1;
     el.textContent = Object.entries(counts)
-      .map(([t, n]) => n > 1 ? `${names[t]} ×${n}` : names[t])
+      .map(([t, n]) => n > 1 ? `${Types[t].name} ×${n}` : Types[t].name)
       .join(', ');
   },
 
@@ -241,9 +234,9 @@ const Game = {
     document.getElementById('btn-deselect').addEventListener('click', () => {
       Selection.clear();
     });
-    // Train a worker at the selected main building.
+    // Train a unit at the selected building (type-driven).
     document.getElementById('btn-train').addEventListener('click', () => {
-      this.trainWorker();
+      this.trainUnit();
     });
   },
 
