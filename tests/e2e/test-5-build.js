@@ -21,13 +21,13 @@ exports.run = async () => {
   // Invalid spot (on the HQ): no site, still armed.
   await g.tapWorld(560, 656);
   assert(await page.evaluate(() =>
-    !Entities.list.some(e => e.type === 'barracks') && Game.placing === 'barracks'),
+    !Entities.list.some(e => e.type === 'barracks' && e.owner === 0) && Game.placing === 'barracks'),
     'invalid placement was accepted');
 
   // Valid spot: site spawns, ore is paid, the worker is sent to build.
   await g.tapWorld(592, 880);
   const placed = await page.evaluate(() => {
-    const s = Entities.list.find(e => e.type === 'barracks');
+    const s = Entities.list.find(e => e.type === 'barracks' && e.owner === 0);
     return s && {
       under: s.underConstruction, ore: Game.ore,
       builder: Entities.list.some(e => e.kind === 'unit' &&
@@ -44,16 +44,16 @@ exports.run = async () => {
   for (let i = 0; i < 20 && !progressed; i++) {
     await page.waitForTimeout(500);
     progressed = await page.evaluate(() =>
-      Entities.list.find(e => e.type === 'barracks').progress > 0.5);
+      Entities.list.find(e => e.type === 'barracks' && e.owner === 0).progress > 0.5);
   }
   assert(progressed, 'construction never progressed');
   await page.evaluate(() => {
-    const s = Entities.list.find(e => e.type === 'barracks');
+    const s = Entities.list.find(e => e.type === 'barracks' && e.owner === 0);
     s.progress = s.def.buildTime - 0.3;
   });
   await page.waitForTimeout(1500);
   const done = await page.evaluate(() => {
-    const s = Entities.list.find(e => e.type === 'barracks');
+    const s = Entities.list.find(e => e.type === 'barracks' && e.owner === 0);
     return { under: s.underConstruction, builderStopped: Entities.list.every(e =>
       e.kind !== 'unit' || !e.cmd || e.cmd.type !== 'build') };
   });

@@ -114,6 +114,34 @@ const Hex = {
     return null;
   },
 
+  // Range slot: a free hex within rangePx of the target (unit or structure),
+  // nearest to the attacker. Each attacker grabs the closest open spot on its
+  // side, so a group fans out along the range ring and units behind path
+  // around the ones already standing at range.
+  attackSlot(t, e, rangePx) {
+    const T = CONFIG.TILE;
+    const st = t.kind === 'structure';
+    const x0 = st ? t.tx * T : t.x, x1 = st ? (t.tx + t.w) * T : t.x;
+    const y0 = st ? t.ty * T : t.y, y1 = st ? (t.ty + t.h) * T : t.y;
+    const r0 = Math.max(0, Math.floor((y0 - rangePx) / this.rowH) - 1);
+    const r1 = Math.min(this.rows - 1, Math.ceil((y1 + rangePx) / this.rowH));
+    let best = null, bd = Infinity;
+    for (let row = r0; row <= r1; row++) {
+      const c0 = Math.max(0, Math.floor((x0 - rangePx) / this.S) - 1);
+      const c1 = Math.min(this.cols(row) - 1, Math.ceil((x1 + rangePx) / this.S));
+      for (let col = c0; col <= c1; col++) {
+        const c = this.centerOf(col, row);
+        const dx = Math.max(x0 - c.x, 0, c.x - x1);
+        const dy = Math.max(y0 - c.y, 0, c.y - y1);
+        if (Math.hypot(dx, dy) > rangePx + 0.001) continue;
+        if (!this.free(col, row, e)) continue;
+        const dd = (c.x - e.x) ** 2 + (c.y - e.y) ** 2;
+        if (dd < bd) { bd = dd; best = { col, row }; }
+      }
+    }
+    return best;
+  },
+
   // Free hex hugging a structure's footprint, nearest to (fcol,frow).
   // Widens ring by ring when the edge is crowded, so units queue nearby.
   bestAdjacent(s, fcol, frow, self) {

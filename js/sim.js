@@ -21,21 +21,34 @@ const Sim = {
   hooks: {
     deposit(amount, unit) {},  // a worker delivered `amount` ore
     completed(structure) {},   // a construction site finished
+    attack(attacker, target) {},   // a swing landed (view: tracer flash)
+    destroyed(entity) {},          // something was killed
+    researched(structure, key) {}, // an upgrade finished at `structure`
   },
+  upgrades: {}, // "owner:key" -> researched level
   REPATH_WAIT: 0.1,           // blocked "thinking time" before replanning the leg
   ADJACENT_PX: CONFIG.TILE * 1.10, // "standing at the structure" distance
   LEG_MAX_PX: null,           // max fine-leg length (< 9 hex units), set in init()
   MAX_LEG_FAILS: 3,           // consecutive failed legs before a full replan
 
   // Call after Hex.init(). The frame loop lives in Game; tests call tick()
-  // directly with a fixed dt.
+  // directly with a fixed dt. Resets per-game state (research levels!) so a
+  // new game never inherits upgrades from the previous one.
   init() {
     this.LEG_MAX_PX = Hex.S * 8.5; // "coarse points less than 9 units away"
+    this.upgrades = {};
   },
 
   tick(dt) {
-    for (const e of Entities.list) {
-      if (e.kind === 'unit' && e.cmd) this.tickUnit(e, dt);
+    // Iterate a snapshot: combat can remove entities mid-tick.
+    for (const e of Entities.list.slice()) {
+      if (!Entities.byId.has(e.id)) continue; // died earlier this tick
+      if (e.kind === 'unit') {
+        if (e.cmd) this.tickUnit(e, dt);
+        else if (e.def.idle) e.def.idle(e, dt); // e.g. soldiers auto-acquire
+      } else if (e.research) {
+        this.tickResearch(e, dt);
+      }
     }
   },
 
@@ -212,5 +225,67 @@ const Sim = {
     s.underConstruction = false;
     s.progress = s.def.buildTime;
     this.hooks.completed(s);
+  },
+
+  // ---- Combat ----
+
+  // World-px distance from a unit to another entity (point or footprint).
+  distTo(e, t) {
+    return t.kind === 'structure' ? this.distToRect(e, t)
+         : Math.hypot(t.x - e.x, t.y - e.y);
+  },
+
+  // Nearest hostile within e's aggro radius (owned by another player and
+  // damageable — neutral structures like ore nodes are never targets).
+  findTarget(e) {
+    const R = (e.def.aggro || 0) * Hex.S;
+    if (!R) return null;
+    let best = null, bd = R;
+    for (const t of Entities.list) {
+      if (t.hp == null || t.owner == null || t.owner === e.owner) continue;
+      const d = this.distTo(e, t);
+      if (d < bd) { bd = d; best = t; }
+    }
+    return best;
+  },
+
+  // Effective damage per swing, including researched upgrades.
+  attackDamage(e) {
+    return (e.def.damage || 0) +
+      Upgrades.weapons.bonus * this.upgradeLevel(e.owner, 'weapons');
+  },
+
+  damage(t, amount, attacker) {
+    if (t.hp == null) return;
+    t.hp -= amount;
+    this.hooks.attack(attacker, t);
+    if (t.hp <= 0) {
+      if (t.kind === 'unit') Entities.removeUnit(t);
+      else Entities.removeStructure(t);
+      this.hooks.destroyed(t);
+    }
+  },
+
+  // ---- Upgrades (researched at buildings with def.upgrades) ----
+
+  upgradeLevel(owner, key) {
+    return this.upgrades[owner + ':' + key] || 0;
+  },
+
+  // Payment is the caller's business; one research job per building.
+  startResearch(b, key) {
+    if (b.research || b.underConstruction) return false;
+    b.research = { key, t: 0, total: Upgrades[key].time };
+    return true;
+  },
+
+  tickResearch(b, dt) {
+    b.research.t += dt;
+    if (b.research.t >= b.research.total) {
+      const key = b.research.key;
+      this.upgrades[b.owner + ':' + key] = this.upgradeLevel(b.owner, key) + 1;
+      b.research = null;
+      this.hooks.researched(b, key);
+    }
   },
 };

@@ -13,7 +13,9 @@ exports.run = async () => {
   }));
   assert(!bars.topOverflow, 'top bar overflows viewport');
   assert(bars.grid >= 2, 'grid not drawn');
-  assert(bars.entities === 5, `expected 5 entities, got ${bars.entities}`);
+  assert(bars.entities === 6, `expected 6 entities, got ${bars.entities}`);
+  assert(await page.evaluate(() => !!document.querySelector('.entity.barracks.p1')),
+    'enemy barracks missing or not styled as enemy');
 
   const z0 = await page.evaluate(() => Camera.zoom);
   await page.click('#btn-zoom-in');

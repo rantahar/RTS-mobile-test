@@ -37,6 +37,30 @@ const CONFIG = {
   SOLDIER_COST: 15,    // ore to train a soldier at a barracks
   BARRACKS_COST: 30,   // ore to place a barracks construction site
   BARRACKS_BUILD: 10,  // worker-seconds of construction work to finish it
+
+  // Combat
+  WORKER_HP: 30,
+  SOLDIER_HP: 40,
+  SOLDIER_DMG: 4,      // damage per swing
+  SOLDIER_RATE: 0.8,   // seconds between swings
+  SOLDIER_RANGE: 2,    // attack range in hex spacings (range slots sit here)
+  SOLDIER_AGGRO: 5,    // auto-acquire radius in hex spacings
+  HQ_HP: 400,
+  BARRACKS_HP: 220,
+  LAB_HP: 160,
+  LAB_COST: 25,
+  LAB_BUILD: 8,        // worker-seconds to construct a lab
+
+  // Upgrades (researched at the lab)
+  WEAPON_BONUS: 2,       // +damage per weapons level
+  WEAPON_COST_BASE: 30,  // level 1 cost; each level adds WEAPON_COST_STEP
+  WEAPON_COST_STEP: 20,
+  WEAPON_TIME: 12,       // research seconds per level
+
+  // Enemy AI
+  ENEMY_PRODUCE_S: 16, // seconds per enemy soldier
+  ENEMY_WAVE: 3,       // idle soldiers needed before it attacks
+  ENEMY_CAP: 6,        // max simultaneous enemy soldiers
 };
 
 // Derived helpers.

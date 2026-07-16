@@ -12,16 +12,18 @@ const View = {
 
   add(e) {
     const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    g.setAttribute('class', `entity ${e.kind} ${e.type}`);
+    const owner = e.owner != null ? ` p${e.owner}` : '';
+    g.setAttribute('class', `entity ${e.kind} ${e.type}${owner}`);
     g.dataset.id = e.id;
     g.innerHTML = e.def.svg(e);
     g.setAttribute('transform', `translate(${e.x} ${e.y})`);
-    if (e.kind === 'structure' && e.underConstruction) this._addSiteBar(e, g);
+    if (e.maxHp) this._addHpBar(e, g);
     this.els.set(e.id, g);
     this.layer.appendChild(g);
   },
 
-  // Progress bar floating above a construction site; removed on completion.
+  // Progress bar above a structure (construction or research); created
+  // lazily by sync(), removed when the work finishes.
   _addSiteBar(e, g) {
     const T = CONFIG.TILE;
     const w = e.w * T - 10;
@@ -34,6 +36,28 @@ const View = {
     g.appendChild(bar);
     g._pfill = bar.lastElementChild;
     g._pbarW = w;
+  },
+
+  // HP bar; hidden via CSS until the entity is damaged.
+  _addHpBar(e, g) {
+    const T = CONFIG.TILE;
+    const w = e.kind === 'unit' ? e.r * 2 : e.w * T - 10;
+    const y = e.kind === 'unit' ? -e.r - 9 : -(e.h * T) / 2 - 19;
+    const bar = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    bar.setAttribute('class', 'hpbar');
+    bar.innerHTML = `
+      <rect class="bg" x="${-w / 2}" y="${y}" width="${w}" height="3.5" rx="1.5"/>
+      <rect class="fill" x="${-w / 2}" y="${y}" width="${w}" height="3.5" rx="1.5"/>`;
+    g.appendChild(bar);
+    g._hpfill = bar.lastElementChild;
+    g._hpW = w;
+  },
+
+  // Fraction of structure work in progress (construction or research).
+  _progressFrac(e) {
+    if (e.underConstruction) return Math.min(1, e.progress / e.def.buildTime);
+    if (e.research) return Math.min(1, e.research.t / e.research.total);
+    return null;
   },
 
   remove(e) {
@@ -52,15 +76,19 @@ const View = {
         el.classList.toggle('carrying', !!e.carrying);
       } else {
         el.classList.toggle('unbuilt', !!e.underConstruction);
-        if (el._pfill) {
-          if (e.underConstruction) {
-            const frac = Math.min(1, e.progress / e.def.buildTime);
-            el._pfill.setAttribute('width', el._pbarW * frac);
-          } else {
-            el._pfill.parentNode.remove();
-            el._pfill = null;
-          }
+        const frac = this._progressFrac(e);
+        if (frac != null) {
+          if (!el._pfill) this._addSiteBar(e, el);
+          el._pfill.setAttribute('width', el._pbarW * frac);
+        } else if (el._pfill) {
+          el._pfill.parentNode.remove();
+          el._pfill = null;
         }
+      }
+      if (el._hpfill) {
+        const hurt = e.hp < e.maxHp;
+        el.classList.toggle('damaged', hurt);
+        if (hurt) el._hpfill.setAttribute('width', el._hpW * Math.max(0, e.hp / e.maxHp));
       }
       el.classList.toggle('selected', Selection.ids.has(e.id));
     }

@@ -9,7 +9,7 @@ over `file://`), or serve the directory statically.
 | Gesture / button | Action |
 |---|---|
 | Tap (nothing selected) | Select the tapped unit/structure (shape hit-test, finger slop) |
-| Tap (something selected) | Command: ground = move, resource = mine, structure/unit = go to |
+| Tap (something selected) | Command: ground = move, resource = mine, enemy = attack, own structure = go to |
 | One-finger drag | Rubber-band box select (units first, else structures) |
 | Tap and hold | Deselect |
 | Two-finger drag / pinch | Pan / zoom the camera |
@@ -18,14 +18,26 @@ over `file://`), or serve the directory statically.
 | Macro / Hex | Debug overlays: 3×3 macro grid, unit hex lattice |
 | ✕ | Deselect (long tap does the same) |
 
+The second top row is the **group bar**: HQ / Prod / Lab / Idle (workers) /
+Army select those groups; tapping again centers the camera on them. 1 / 2 / 3
+are assignable — press-and-hold saves the current selection, tap recalls it.
+
 The rest of the bottom bar is **dynamic** — buttons come from the selection:
 
 | Selection | Buttons |
 |---|---|
 | Main building | Worker ◆10 (train) |
 | Barracks | Soldier ◆15 (train) |
-| Worker(s) | Barracks ◆30 (build), Stop |
+| Lab | Weapons L1/2/3 (research: +2 soldier damage per level) |
+| Worker(s) | Barracks ◆30, Lab ◆25 (build), Stop |
 | Any units | Stop |
+
+Combat: soldiers attack on command (tap an enemy) and auto-engage hostiles
+within their aggro radius. Attackers take free **range slots** around the
+target — a group fans out along the range ring and units behind path around
+the ones already fighting. The **enemy** (red camp, bottom-right) slowly
+trains soldiers and attacks in waves of three; destroy its barracks to stop
+it.
 
 Building: tap the build button to arm it, then tap the map to place the
 construction site (green flash = placed, red = invalid spot). The site is
@@ -64,7 +76,10 @@ Model layer (DOM-free, headless-testable):
 - `js/selection.js` — selected-id set
 - `js/sim.js` — simulation engine: dispatches `unit.cmd` to the type's
   handler; movement primitives (travel/approachRect), hex reservations,
-  collision wait-and-repath (fine leg only)
+  collision wait-and-repath (fine leg only); combat helpers (damage,
+  findTarget, attackDamage) and upgrade research state
+- `js/ai.js` — scripted opponent: trains soldiers on a timer, attacks in
+  waves once enough stand idle
 
 View / UI layer (DOM):
 
@@ -92,7 +107,7 @@ model code never calls the UI.
 
 Working: selection, command taps, group moves with hex-packed arrival,
 two-level pathfinding with string pulling, unit collisions/queueing, mining
-economy, training, worker-built barracks + soldiers, selection-driven
-action bar. Next candidates: attack command (range-slot arcs), group-select
-buttons (all mains / production / idle workers / army + assignable),
-strategic zoom-out, depleting resource nodes.
+economy, training, worker-built barracks/lab + soldiers, selection-driven
+action bar, combat with range slots + auto-acquire, weapons research, group
+buttons, scripted enemy waves. Next candidates: strategic zoom-out view,
+depleting resource nodes, win/lose detection, more unit and upgrade types.

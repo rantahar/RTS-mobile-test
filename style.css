@@ -32,6 +32,7 @@ body {
   z-index: 10;
 }
 #topbar { border-bottom: 1px solid #262b36; padding-top: calc(8px + env(safe-area-inset-top)); }
+#groupbar { border-bottom: 1px solid #262b36; padding-top: 5px; padding-bottom: 5px; justify-content: space-between; }
 #bottombar { border-top: 1px solid #262b36; padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
 
 .spacer { flex: 1 1 auto; }
@@ -53,6 +54,8 @@ body {
 .btn:active { background: #2d3547; }
 .btn[disabled] { opacity: 0.4; }
 .btn[aria-pressed="true"] { background: #2f4a4a; border-color: #3d6d6d; }
+.btn.sm { min-width: 36px; min-height: 34px; padding: 6px 5px; font-size: 13px; flex: 1 1 0; }
+.btn.flash { background: #4a5a2f; border-color: #7a944a; }
 
 .readout {
   font-size: 12px;
@@ -109,10 +112,27 @@ body {
 .entity.soldier .shape, .entity.soldier .detail { stroke: #ff9d7a; }
 .entity.soldier .shape { fill: rgba(255, 157, 122, 0.08); }
 
+.entity.lab .shape, .entity.lab .detail { stroke: #6fe0c8; }
+.entity.lab .shape { fill: rgba(111, 224, 200, 0.06); }
+
+/* Enemy (owner 1): red, overrides the type colors above */
+.entity.p1 .shape, .entity.p1 .detail { stroke: #e25f5f; }
+.entity.p1 .shape { fill: rgba(226, 95, 95, 0.08); }
+.entity.p1 .flag { fill: #e25f5f; }
+
 /* Construction sites: dashed outline until built, progress bar above */
 .entity.unbuilt .shape, .entity.unbuilt .detail { stroke-dasharray: 6 5; opacity: 0.75; }
 .sitebar .pbg { fill: #232a36; stroke: #3a4658; stroke-width: 1; }
 .sitebar .pfill { fill: #5fc8a8; stroke: none; }
+
+/* HP bars: only shown once damaged */
+.hpbar { display: none; }
+.entity.damaged .hpbar { display: block; }
+.hpbar .bg { fill: #232a36; stroke: #3a4658; stroke-width: 1; }
+.hpbar .fill { fill: #7ddc8a; stroke: none; }
+
+/* Attack flash */
+.tracer { stroke: #ffd0a0; stroke-width: 2; opacity: 0.9; vector-effect: non-scaling-stroke; }
 
 /* Selection highlight */
 .entity .selmark {
@@ -133,6 +153,7 @@ body {
 .pulse.move { stroke: #5fc8a8; }
 .pulse.mine { stroke: #e2b04e; }
 .pulse.goto { stroke: #6fd3ff; }
+.pulse.attack { stroke: #e25f5f; }
 
 /* Placement attempt feedback */
 .place-flash rect { fill: none; stroke-width: 2; stroke-dasharray: 6 4; vector-effect: non-scaling-stroke; }

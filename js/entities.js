@@ -33,6 +33,8 @@ const Entities = {
       y: (ty + h / 2) * T,
       underConstruction,
       progress: 0, // worker-seconds of construction done (sites only)
+      hp: def.hp || null, // null = indestructible (e.g. resource nodes)
+      maxHp: def.hp || null,
     };
     // Mark footprint tiles occupied (pathfinding obstacles).
     for (let y = ty; y < ty + h; y++)
@@ -68,12 +70,25 @@ const Entities = {
       coarse: null,
       route: null,
       resHex: null,
+      hp: def.hp || null,
+      maxHp: def.hp || null,
     };
     GameMap.unitOcc.set(e.curHex, e.id);
     this.list.push(e);
     this.byId.set(e.id, e);
     this.hooks.spawned(e);
     return e;
+  },
+
+  // Spawn the unit a building's type trains, on the best free hex by its
+  // "door" (bottom edge). Payment is the caller's business (Game for the
+  // player, AI for the enemy). Returns the unit, or null if walled in.
+  trainAt(b) {
+    const hc = Hex.fromWorld(b.x, b.y + (b.h / 2) * CONFIG.TILE);
+    const h = hc && Hex.bestAdjacent(b, hc.col, hc.row, null);
+    if (!h) return null;
+    const c = Hex.centerOf(h.col, h.row);
+    return this.spawnUnit(b.def.trains, c.x, c.y, b.owner);
   },
 
   // Can a structure of this type be placed with its top-left tile at tx,ty?
@@ -140,18 +155,20 @@ const Entities = {
     return null;
   },
 
-  // Box select: units whose center is inside the rect; if no units,
-  // structures whose footprint intersects the rect.
+  // Box select: the player's units win, then structures, then enemy units
+  // (info only — commands are filtered to owner 0 in Game).
   inRect(ax, ay, bx, by) {
     const x0 = Math.min(ax, bx), x1 = Math.max(ax, bx);
     const y0 = Math.min(ay, by), y1 = Math.max(ay, by);
     const units = this.list.filter(e =>
       e.kind === 'unit' && e.x >= x0 && e.x <= x1 && e.y >= y0 && e.y <= y1);
-    if (units.length) return units;
+    const own = units.filter(e => e.owner === 0);
+    if (own.length) return own;
     const T = CONFIG.TILE;
-    return this.list.filter(e =>
+    const structs = this.list.filter(e =>
       e.kind === 'structure' &&
       e.tx * T < x1 && (e.tx + e.w) * T > x0 &&
       e.ty * T < y1 && (e.ty + e.h) * T > y0);
+    return structs.length ? structs : units;
   },
 };
