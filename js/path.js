@@ -1,18 +1,17 @@
 // Hierarchical pathfinding for units over the hex lattice.
 //
 // Two levels, per the map design:
-//   1. A* over macro tiles (MACRO x MACRO squares) to get a coarse route,
-//      structures only. A macro tile is passable if any of its micro tiles
-//      is structure-free.
-//   2. A* over hexes restricted to a corridor around the macro route (macro
-//      tiles on the route, dilated by one macro ring). This keeps the fine
-//      search proportional to path length instead of map area.
-// If the corridor search fails (tight squeeze, unit jam), fall back to an
-// unrestricted hex search.
+//   1. coarse(): A* over macro tiles (MACRO x MACRO squares), structures
+//      only. The resulting macro-center waypoints are STORED on the unit
+//      and consumed over the whole trip.
+//   2. fineRoute(): A* over hexes from the unit to the next coarse waypoint
+//      only, then string-pulled. Legs are capped (see Sim.trimCoarse), so a
+//      collision replans O(leg), never the whole path.
 //
 // Hex walkability: inside the map, clear of structure footprints (with a
-// margin so unit circles don't clip buildings), and not owned by another
-// unit. All 6 hex steps cost the same — no corner-cutting cases to handle.
+// margin so unit circles don't clip buildings); other units block only
+// within LOCAL_R of the mover. All 6 hex steps cost the same — no
+// corner-cutting cases to handle.
 
 class _MinHeap {
   constructor() { this.a = []; }
@@ -62,10 +61,8 @@ const Path = {
   },
 
   // Hex-lattice A*. start/goal are {col,row}. Returns waypoints excluding the
-  // start hex, [] if already there, or null if unreachable. `allowedMicro`
-  // optionally restricts hexes to those whose center lies in a set of micro
-  // tile idx (the macro corridor).
-  aStar(start, goal, self, allowedMicro) {
+  // start hex, [] if already there, or null if unreachable.
+  aStar(start, goal, self) {
     const sIdx = Hex.idx(start.col, start.row);
     const gIdx = Hex.idx(goal.col, goal.row);
     if (sIdx === gIdx) return [];
@@ -97,11 +94,6 @@ const Path = {
         if (Hex.dist({ col: ncol, row: nrow }, start) <= this.LOCAL_R &&
             !Hex.unitFree(ncol, nrow, self)) continue;
         const nidx = Hex.idx(ncol, nrow);
-        if (allowedMicro) {
-          const c = Hex.centerOf(ncol, nrow);
-          const t = GameMap.worldToTile(c.x, c.y);
-          if (!allowedMicro.has(GameMap.idx(t.tx, t.ty))) continue;
-        }
         const ng = g.get(cur) + 10;
         if (ng < (g.get(nidx) ?? Infinity)) {
           g.set(nidx, ng);
@@ -163,26 +155,6 @@ const Path = {
     return null;
   },
 
-  // Micro-tile idx set covering the macro route dilated by one macro ring.
-  corridor(macroPath) {
-    const W = GameMap.macroW, M = GameMap.macro;
-    const macros = new Set();
-    for (const m of macroPath) {
-      const mx = m % W, my = (m - mx) / W;
-      for (let ox = -1; ox <= 1; ox++)
-        for (let oy = -1; oy <= 1; oy++)
-          macros.add(`${mx + ox},${my + oy}`);
-    }
-    const allowed = new Set();
-    for (const key of macros) {
-      const [mx, my] = key.split(',').map(Number);
-      for (let x = mx * M; x < (mx + 1) * M; x++)
-        for (let y = my * M; y < (my + 1) * M; y++)
-          if (GameMap.inBounds(x, y)) allowed.add(GameMap.idx(x, y));
-    }
-    return allowed;
-  },
-
   // ---- Route smoothing (string pulling) ----
 
   // Liang-Barsky: does segment a-b intersect the axis-aligned rect?
@@ -213,10 +185,12 @@ const Path = {
   },
 
   // Line of sight between two world points: clear of every structure
-  // footprint (expanded by the hex clearance margin) AND of other units'
-  // bodies, so smoothing never collapses an A* detour back through a unit
-  // that is standing on the straight line. Hex neighbors are 1 spacing
-  // apart, so the clearance must stay below that to keep legal steps legal.
+  // footprint (expanded by the hex clearance margin) AND — when unitAware —
+  // of every hex other units OCCUPY or have RESERVED (the same unitOcc table
+  // A* plans against), so smoothing never collapses an A* detour back
+  // through somebody's hex. Clearance is 0.75 spacing: a hex mutually
+  // adjacent to two path hexes sits sqrt(3)/2 ~ 0.87 spacing off their
+  // connecting segment, so legal A* steps always stay legal.
   // (Linear scans are fine while entity counts are small; bucket by macro
   // tile when they grow.)
   UNIT_CLEAR2: null, // (0.75 * spacing)^2, set on first use
@@ -225,12 +199,17 @@ const Path = {
     const m = Hex.MARGIN, T = CONFIG.TILE;
     if (this.UNIT_CLEAR2 == null) this.UNIT_CLEAR2 = (Hex.S * 0.75) ** 2;
     for (const s of Entities.list) {
-      if (s.kind === 'structure') {
-        if (this.segRect(a, b,
-            s.tx * T - m, s.ty * T - m,
-            (s.tx + s.w) * T + m, (s.ty + s.h) * T + m)) return false;
-      } else if (unitAware && s !== self) {
-        if (this.segPointDist2(a, b, s.x, s.y) < this.UNIT_CLEAR2) return false;
+      if (s.kind !== 'structure') continue;
+      if (this.segRect(a, b,
+          s.tx * T - m, s.ty * T - m,
+          (s.tx + s.w) * T + m, (s.ty + s.h) * T + m)) return false;
+    }
+    if (unitAware) {
+      for (const [idx, id] of GameMap.unitOcc) {
+        if (self && id === self.id) continue;
+        const col = idx % Hex.STRIDE, row = (idx - col) / Hex.STRIDE;
+        const c = Hex.centerOf(col, row);
+        if (this.segPointDist2(a, b, c.x, c.y) < this.UNIT_CLEAR2) return false;
       }
     }
     return true;
@@ -259,32 +238,48 @@ const Path = {
     return out;
   },
 
-  // Plan a smoothed world-point route for a unit to a destination hex.
+  // ---- Two-level planning ----
+  //
+  // coarse(): macro-grid waypoints for the whole trip, stored on the unit.
+  // fineRoute(): small-grid (hex) leg to the next coarse waypoint only.
+  // On collision, only the current fine leg is replanned — the coarse route
+  // survives, so avoidance costs O(leg), not O(whole path).
+
+  // Coarse waypoints from the unit to a destination hex: centers of the
+  // macro tiles along the macro A* route (excluding start and goal macros),
+  // then the exact destination point. Adjacent macro centers are ~3-4 tiles
+  // apart, comfortably under the 9-unit leg cap.
+  coarse(e, dest) {
+    const dc = Hex.centerOf(dest.col, dest.row);
+    const M = GameMap.macro, T = CONFIG.TILE;
+    const st = GameMap.worldToTile(e.x, e.y);
+    const gt = GameMap.worldToTile(dc.x, dc.y);
+    const sm = GameMap.microToMacro(st.tx, st.ty);
+    const gm = GameMap.microToMacro(gt.tx, gt.ty);
+
+    const pts = [];
+    if (sm.mx !== gm.mx || sm.my !== gm.my) {
+      const mp = this.macroAStar(sm.mx, sm.my, gm.mx, gm.my); // [goal..start]
+      if (mp) {
+        for (let i = mp.length - 2; i >= 1; i--) { // start->goal, ends excluded
+          const mx = mp[i] % GameMap.macroW;
+          const my = (mp[i] - mx) / GameMap.macroW;
+          pts.push({ x: (mx * M + M / 2) * T, y: (my * M + M / 2) * T });
+        }
+      }
+    }
+    pts.push({ x: dc.x, y: dc.y });
+    return pts;
+  },
+
+  // Small-grid leg: hex A* from the unit to a nearby hex (no corridor —
+  // legs are short by construction), then string-pulled.
   // Returns [{x,y},...], [] if already there, or null if unreachable.
-  route(e, dest) {
-    const hp = this.find(e.hex, dest, e);
+  fineRoute(e, dest) {
+    const hp = this.aStar(e.hex, dest, e);
     if (!hp) return null;
     if (!hp.length) return [];
     return this.smooth({ x: e.x, y: e.y }, hp, e);
   },
 
-  // Hierarchical find from hex to hex.
-  find(start, goal, self) {
-    if (start.col === goal.col && start.row === goal.row) return [];
-    const sc = Hex.centerOf(start.col, start.row);
-    const gc = Hex.centerOf(goal.col, goal.row);
-    const st = GameMap.worldToTile(sc.x, sc.y);
-    const gt = GameMap.worldToTile(gc.x, gc.y);
-    const sm = GameMap.microToMacro(st.tx, st.ty);
-    const gm = GameMap.microToMacro(gt.tx, gt.ty);
-
-    let allowed = null;
-    if (sm.mx !== gm.mx || sm.my !== gm.my) {
-      const mp = this.macroAStar(sm.mx, sm.my, gm.mx, gm.my);
-      if (mp) allowed = this.corridor(mp);
-    }
-    let p = this.aStar(start, goal, self, allowed);
-    if (!p && allowed) p = this.aStar(start, goal, self, null);
-    return p;
-  },
 };
