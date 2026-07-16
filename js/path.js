@@ -50,6 +50,12 @@ const Path = {
     [1, 1, 14], [1, -1, 14], [-1, 1, 14], [-1, -1, 14],
   ],
 
+  // Units count as obstacles only within this many hexes of the mover
+  // (~2 macro tiles). Farther out their positions are stale by arrival, so
+  // planning ignores them; the reactive reserve/wait/repath layer deals with
+  // whoever is actually there once they become local.
+  LOCAL_R: 6,
+
   structFree(tx, ty) {
     return GameMap.inBounds(tx, ty) &&
            GameMap.occupancy[GameMap.idx(tx, ty)] == null;
@@ -86,7 +92,10 @@ const Path = {
 
       for (const [dc, dr] of Hex.neighbors(crow)) {
         const ncol = ccol + dc, nrow = crow + dr;
-        if (!Hex.free(ncol, nrow, self)) continue;
+        if (!Hex.structFree(ncol, nrow)) continue;
+        // Units block only near the mover (small-grid avoidance zone).
+        if (Hex.dist({ col: ncol, row: nrow }, start) <= this.LOCAL_R &&
+            !Hex.unitFree(ncol, nrow, self)) continue;
         const nidx = Hex.idx(ncol, nrow);
         if (allowedMicro) {
           const c = Hex.centerOf(ncol, nrow);
@@ -212,7 +221,7 @@ const Path = {
   // tile when they grow.)
   UNIT_CLEAR2: null, // (0.75 * spacing)^2, set on first use
 
-  los(a, b, self) {
+  los(a, b, self, unitAware) {
     const m = Hex.MARGIN, T = CONFIG.TILE;
     if (this.UNIT_CLEAR2 == null) this.UNIT_CLEAR2 = (Hex.S * 0.75) ** 2;
     for (const s of Entities.list) {
@@ -220,7 +229,7 @@ const Path = {
         if (this.segRect(a, b,
             s.tx * T - m, s.ty * T - m,
             (s.tx + s.w) * T + m, (s.ty + s.h) * T + m)) return false;
-      } else if (s !== self) {
+      } else if (unitAware && s !== self) {
         if (this.segPointDist2(a, b, s.x, s.y) < this.UNIT_CLEAR2) return false;
       }
     }
@@ -229,15 +238,19 @@ const Path = {
 
   // Collapse a hex path into straight segments: from each point, jump to the
   // furthest waypoint with clear line of sight, so units walk straight and
-  // only turn at obstacle corners.
+  // only turn at obstacle corners. Unit bodies break line of sight only for
+  // segments starting inside the mover's local avoidance zone.
   smooth(from, hexPath, self) {
     const pts = hexPath.map(h => Hex.centerOf(h.col, h.row));
+    const localPx2 = (this.LOCAL_R * Hex.S) ** 2;
     const out = [];
     let cur = from, i = 0;
     while (i < pts.length) {
+      const unitAware =
+        (cur.x - from.x) ** 2 + (cur.y - from.y) ** 2 <= localPx2;
       let j = i;
       for (let k = pts.length - 1; k > i; k--) {
-        if (this.los(cur, pts[k], self)) { j = k; break; }
+        if (this.los(cur, pts[k], self, unitAware)) { j = k; break; }
       }
       out.push(pts[j]);
       cur = pts[j];
