@@ -1,10 +1,9 @@
-// Simulation loop: pathfinding movement, collisions, command execution.
-//
-// Unit commands (unit.cmd):
-//   { type: 'move', col, row }           walk to a hex (or nearest free one)
-//   { type: 'moveRect', targetId }       walk next to a structure
-//   { type: 'mine', nodeId, hqId, phase, t }
-//       phase: 'toNode' -> 'mining' -> 'toHq' -> repeat
+// Simulation engine: the tick loop, two-level movement, and collisions.
+// Sim knows nothing about specific commands — each tick it dispatches
+// unit.cmd to the handler the unit's TYPE defines for it
+// (Types[type].commands[cmd.type], see js/types.js) and provides the
+// movement primitives those handlers build on: travel, approachRect,
+// blockedWait, stopUnit.
 //
 // Movement is two-level:
 //   unit.coarse = [{x,y},...]  macro-grid waypoints for the whole trip,
@@ -15,26 +14,22 @@
 // On collision only the fine leg is replanned — the coarse route survives.
 // Collisions are hex-based: a unit owns the hex under its center
 // (GameMap.unitOcc) and, while moving, reserves the hex a little ahead of it
-// before entering. If that hex is held by someone else the unit waits ~0.5s,
-// then replans the leg around them.
+// before entering. If that hex is held by someone else the unit waits
+// REPATH_WAIT seconds, then replans the leg around them.
 const Sim = {
-  _last: null,
+  // Outbound notifications; the app layer (Game) assigns these.
+  hooks: {
+    deposit(amount, unit) {}, // a worker delivered `amount` ore
+  },
   REPATH_WAIT: 0.1,           // blocked "thinking time" before replanning the leg
   ADJACENT_PX: CONFIG.TILE * 1.10, // "standing at the structure" distance
-  LEG_MAX_PX: null,           // max fine-leg length (< 9 hex units), set in start()
+  LEG_MAX_PX: null,           // max fine-leg length (< 9 hex units), set in init()
   MAX_LEG_FAILS: 3,           // consecutive failed legs before a full replan
 
-  start() {
+  // Call after Hex.init(). The frame loop lives in Game; tests call tick()
+  // directly with a fixed dt.
+  init() {
     this.LEG_MAX_PX = Hex.S * 8.5; // "coarse points less than 9 units away"
-    requestAnimationFrame((ts) => this._frame(ts));
-  },
-
-  _frame(ts) {
-    if (this._last == null) this._last = ts;
-    const dt = Math.min((ts - this._last) / 1000, 0.05); // clamp tab-sleep jumps
-    this._last = ts;
-    this.tick(dt);
-    requestAnimationFrame((t) => this._frame(t));
   },
 
   tick(dt) {
@@ -43,49 +38,11 @@ const Sim = {
     }
   },
 
+  // Dispatch the unit's command to the handler its type defines.
   tickUnit(e, dt) {
-    const c = e.cmd;
-
-    if (c.type === 'move') {
-      if (!e.coarse) {
-        const dest = Hex.nearestFree(c.col, c.row, e, null);
-        if (!dest) { this.stopUnit(e); return; } // nowhere to stand: give up
-        e.coarse = Path.coarse(e, dest);
-      }
-      const st = this.travel(e, c, dt);
-      if (st === 'arrived') this.stopUnit(e);
-      else if (st === 'blocked') this.blockedWait(e, c, dt);
-
-    } else if (c.type === 'moveRect') {
-      const s = Entities.byId.get(c.targetId);
-      if (!s) { this.stopUnit(e); return; }
-      if (this.approachRect(e, c, s, dt)) this.stopUnit(e);
-
-    } else if (c.type === 'mine') {
-      const node = Entities.byId.get(c.nodeId);
-      if (!node) { this.stopUnit(e); return; }
-
-      if (c.phase === 'toNode') {
-        if (this.approachRect(e, c, node, dt)) {
-          c.phase = 'mining';
-          c.t = CONFIG.MINE_TIME;
-        }
-      } else if (c.phase === 'mining') {
-        c.t -= dt;
-        if (c.t <= 0) {
-          this.setCarrying(e, true);
-          c.phase = 'toHq';
-        }
-      } else if (c.phase === 'toHq') {
-        const hq = Entities.byId.get(c.hqId);
-        if (!hq) { this.stopUnit(e); return; } // nowhere to deposit; stay carrying
-        if (this.approachRect(e, c, hq, dt)) {
-          this.setCarrying(e, false);
-          Game.addOre(CONFIG.CARRY);
-          c.phase = 'toNode';
-        }
-      }
-    }
+    const handler = e.def.commands && e.def.commands[e.cmd.type];
+    if (handler) handler(e, e.cmd, dt);
+    else this.stopUnit(e); // type doesn't understand this command
   },
 
   // Drive the unit through its coarse waypoints, planning one fine leg at a
@@ -155,12 +112,11 @@ const Sim = {
       this.reserve(e, idx);
     }
 
-    const step = Math.min(CONFIG.WORKER_SPEED * dt, d);
+    const step = Math.min((e.def.speed || CONFIG.WORKER_SPEED) * dt, d);
     e.x += ux * step;
     e.y += uy * step;
     if (step >= d - 0.001) { e.x = wp.x; e.y = wp.y; e.route.shift(); }
     this.updateHexReg(e);
-    Entities.place(e);
     return e.route.length ? 'moving' : 'arrived';
   },
 
@@ -245,7 +201,6 @@ const Sim = {
   },
 
   setCarrying(e, on) {
-    e.carrying = on;
-    e.el.classList.toggle('carrying', on);
+    e.carrying = on; // View.sync renders the cargo dot
   },
 };

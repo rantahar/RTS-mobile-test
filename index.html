@@ -37,18 +37,24 @@
     <button class="btn" id="btn-deselect">&#10005;</button>
   </div>
 
-  <!-- Classic scripts (no build step, works over file://) -->
+  <!-- Classic scripts (no build step, works over file://).
+       ORDER MATTERS: config first, then model layers (camera/map/hex/path/
+       types/entities/selection/sim), then view/ui (render/view/actions/
+       input), then game.js which wires everything. Keep tests/unit/run.js's
+       file list in sync when adding a module. -->
   <script src="js/config.js"></script>
   <script src="js/camera.js"></script>
   <script src="js/map.js"></script>
   <script src="js/hex.js"></script>
   <script src="js/path.js"></script>
+  <script src="js/types.js"></script>
   <script src="js/entities.js"></script>
   <script src="js/selection.js"></script>
+  <script src="js/sim.js"></script>
   <script src="js/render.js"></script>
+  <script src="js/view.js"></script>
   <script src="js/actions.js"></script>
   <script src="js/input.js"></script>
-  <script src="js/sim.js"></script>
   <script src="js/game.js"></script>
 </body>
 </html>

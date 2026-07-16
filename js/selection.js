@@ -1,26 +1,27 @@
-// Current selection (set of entity ids) + highlight visuals.
+// Current selection: a set of entity ids, no DOM. View.sync renders the
+// highlight; onChange (assigned by Game) refreshes the HUD.
 const Selection = {
   ids: new Set(),
+  onChange() {}, // assigned by the app layer
 
   get entities() {
     return [...this.ids].map(id => Entities.byId.get(id)).filter(Boolean);
   },
 
   clear() {
-    for (const id of this.ids) {
-      const e = Entities.byId.get(id);
-      if (e) e.el.classList.remove('selected');
-    }
+    if (!this.ids.size) return;
     this.ids.clear();
-    Game.updateSelInfo();
+    this.onChange();
   },
 
   setTo(list) {
-    this.clear();
-    for (const e of list) {
-      this.ids.add(e.id);
-      e.el.classList.add('selected');
-    }
-    Game.updateSelInfo();
+    this.ids.clear();
+    for (const e of list) this.ids.add(e.id);
+    this.onChange();
+  },
+
+  // Drop one id (e.g. the entity was removed from the game).
+  remove(id) {
+    if (this.ids.delete(id)) this.onChange();
   },
 };

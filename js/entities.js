@@ -1,4 +1,5 @@
-// Entity registry + SVG rendering (pure outline/symbol graphics).
+// Entity registry: plain-data model, no DOM (rendering lives in js/view.js,
+// wired up through the hooks below).
 //
 // Structures anchor on a top-left tile and occupy a w x h tile footprint.
 // Units live at a world-px position and register on the micro tile their
@@ -8,36 +9,40 @@ const Entities = {
   list: [],
   byId: new Map(),
   nextId: 1,
-  layer: null,
 
-  init() {
-    this.layer = document.getElementById('layer-entities');
+  // Outbound notifications; the app layer (Game) assigns these.
+  hooks: {
+    spawned(e) {},
+    removed(e) {},
   },
 
-  spawnStructure(type, tx, ty, w, h) {
+  spawnStructure(type, tx, ty, owner = 0) {
+    const def = Types[type];
     const T = CONFIG.TILE;
+    const w = def.w, h = def.h;
     const e = {
       id: this.nextId++,
       kind: 'structure',
-      type, tx, ty, w, h,
+      type, def,
+      owner: def.neutral ? null : owner,
+      tx, ty, w, h,
       x: (tx + w / 2) * T,
       y: (ty + h / 2) * T,
-      el: null,
     };
-    // Mark footprint tiles occupied (pathfinding obstacles later).
+    // Mark footprint tiles occupied (pathfinding obstacles).
     for (let y = ty; y < ty + h; y++)
       for (let x = tx; x < tx + w; x++)
         if (GameMap.inBounds(x, y)) GameMap.occupancy[GameMap.idx(x, y)] = e.id;
 
-    e.el = this.makeEl(e);
-    this.layer.appendChild(e.el);
     this.list.push(e);
     this.byId.set(e.id, e);
+    this.hooks.spawned(e);
     return e;
   },
 
   // Spawn a unit on the free hex nearest to a world point.
-  spawnUnit(type, wx, wy) {
+  spawnUnit(type, wx, wy, owner = 0) {
+    const def = Types[type];
     let h = Hex.fromWorld(wx, wy);
     if (!h) return null;
     if (!Hex.free(h.col, h.row, null)) h = Hex.nearestFree(h.col, h.row, null, null);
@@ -47,73 +52,50 @@ const Entities = {
     const e = {
       id: this.nextId++,
       kind: 'unit',
-      type,
+      type, def,
+      owner,
       x: c.x, y: c.y,
       hex: h,
       curHex: Hex.idx(h.col, h.row),
       tx: t.tx, ty: t.ty,
-      r: CONFIG.TILE * 0.42,
+      r: CONFIG.TILE * def.radius,
       cmd: null,
       coarse: null,
       route: null,
       resHex: null,
-      el: null,
     };
     GameMap.unitOcc.set(e.curHex, e.id);
-    e.el = this.makeEl(e);
-    this.layer.appendChild(e.el);
     this.list.push(e);
     this.byId.set(e.id, e);
+    this.hooks.spawned(e);
     return e;
   },
 
-  // Micro tile a unit currently registers on.
-  tileOf(e) { return GameMap.worldToTile(e.x, e.y); },
-
-  makeEl(e) {
-    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    g.setAttribute('class', `entity ${e.kind} ${e.type}`);
-    g.dataset.id = e.id;
-    g.innerHTML = this.svgFor(e);
-    this.place(e, g);
-    return g;
+  // Remove a unit from the game (future: combat deaths).
+  removeUnit(e) {
+    for (const [idx, id] of GameMap.unitOcc) {
+      if (id === e.id) GameMap.unitOcc.delete(idx);
+    }
+    this._drop(e);
   },
 
-  place(e, el) {
-    (el || e.el).setAttribute('transform', `translate(${e.x} ${e.y})`);
+  // Remove a structure and free its footprint (future: destruction, depletion).
+  removeStructure(e) {
+    for (let y = e.ty; y < e.ty + e.h; y++)
+      for (let x = e.tx; x < e.tx + e.w; x++) {
+        const i = GameMap.idx(x, y);
+        if (GameMap.inBounds(x, y) && GameMap.occupancy[i] === e.id)
+          GameMap.occupancy[i] = null;
+      }
+    this._drop(e);
   },
 
-  // SVG symbol content, centered on (0,0) = entity center.
-  svgFor(e) {
-    const T = CONFIG.TILE;
-    if (e.type === 'hq') {
-      const h = (e.w * T) / 2;      // half footprint size in px
-      const i = h - 6;              // outline inset
-      return `
-        <rect class="selmark" x="${-h - 4}" y="${-h - 4}" width="${2 * h + 8}" height="${2 * h + 8}" rx="8"/>
-        <rect class="shape" x="${-i}" y="${-i}" width="${2 * i}" height="${2 * i}" rx="10"/>
-        <rect class="detail" x="-16" y="${i - 32}" width="32" height="32" rx="4"/>
-        <path class="detail" d="M0 -52 V 8"/>
-        <path class="flag" d="M0 -52 L36 -41 L0 -30 Z"/>`;
-    }
-    if (e.type === 'node') {
-      const h = (e.w * T) / 2;
-      return `
-        <rect class="selmark" x="${-h - 4}" y="${-h - 4}" width="${2 * h + 8}" height="${2 * h + 8}" rx="6"/>
-        <polygon class="shape" points="0,-26 15,-2 0,22 -15,-2"/>
-        <polygon class="shape" points="-26,8 -16,-5 -6,8 -16,20"/>
-        <polygon class="shape" points="10,12 20,1 29,12 20,22"/>`;
-    }
-    if (e.type === 'worker') {
-      const r = e.r;
-      return `
-        <circle class="selmark" r="${r + 4}"/>
-        <circle class="shape" r="${r}"/>
-        <path class="detail" d="M-7 8 L7 -7"/>
-        <path class="detail" d="M-3 -11 Q9 -13 12 -2"/>
-        <circle class="cargo" cx="${r * 0.55}" cy="${r * 0.55}" r="4.5"/>`;
-    }
-    return `<circle class="shape" r="10"/>`;
+  _drop(e) {
+    const i = this.list.indexOf(e);
+    if (i >= 0) this.list.splice(i, 1);
+    this.byId.delete(e.id);
+    Selection.remove(e.id);
+    this.hooks.removed(e);
   },
 
   // Hit-test a world point against entity shapes. Units win over structures.

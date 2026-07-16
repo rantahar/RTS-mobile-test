@@ -34,5 +34,17 @@ const Camera = {
     const after = this.screenToWorld(anchorSx, anchorSy);
     this.x += before.x - after.x;
     this.y += before.y - after.y;
+    this.clamp(vw, vh);
+  },
+
+  // Keep the view near the map: at most ~4 tiles of void on any side.
+  // If the whole map (plus padding) fits on the axis, center it instead.
+  clamp(vw, vh) {
+    const pad = CONFIG.TILE * 4;
+    const w = vw / this.zoom, h = vh / this.zoom;
+    if (w >= CONFIG.MAP_PX_W + 2 * pad) this.x = (CONFIG.MAP_PX_W - w) / 2;
+    else this.x = Math.max(Math.min(this.x, CONFIG.MAP_PX_W + pad - w), -pad);
+    if (h >= CONFIG.MAP_PX_H + 2 * pad) this.y = (CONFIG.MAP_PX_H - h) / 2;
+    else this.y = Math.max(Math.min(this.y, CONFIG.MAP_PX_H + pad - h), -pad);
   },
 };

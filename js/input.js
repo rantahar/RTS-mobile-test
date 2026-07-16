@@ -25,14 +25,10 @@ const Input = {
     svg.addEventListener('pointercancel', (e) => this.onUp(e));
     // Block iOS Safari pinch-zoom of the page.
     svg.addEventListener('gesturestart', (e) => e.preventDefault());
-    // Desktop convenience: wheel zoom anchored at the cursor.
+    // Mouse wheel is a gesture too (desktop convenience).
     svg.addEventListener('wheel', (e) => {
       e.preventDefault();
-      const p = this.localPoint(e);
-      const { vw, vh } = this.viewport();
-      Camera.setZoom(Camera.zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1), vw, vh, p.x, p.y);
-      Camera.apply(this.world);
-      Game.updateReadout();
+      Actions.dispatch('wheel', 'fire', { s: this.localPoint(e), delta: e.deltaY });
     }, { passive: false });
   },
 
@@ -123,6 +119,5 @@ const Input = {
     } else if (was === 'held' && this.pointers.size === 0) {
       this.state = null;
     }
-    Game.updateReadout();
   },
 };
