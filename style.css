@@ -61,6 +61,7 @@ body {
   min-width: 90px;
   text-align: right;
 }
+.readout.grow { flex: 1 1 auto; text-align: center; color: #ffd75e; min-width: 0; }
 
 /* SVG game viewport fills the remaining space */
 #view {
@@ -77,3 +78,40 @@ body {
 #layer-grid path.micro { stroke: #232a36; stroke-width: 1; fill: none; vector-effect: non-scaling-stroke; }
 #layer-grid path.macro { stroke: #3a4658; stroke-width: 2; fill: none; vector-effect: non-scaling-stroke; }
 #layer-grid rect.mapbg { fill: #161b24; stroke: #2b3342; stroke-width: 2; vector-effect: non-scaling-stroke; }
+
+/* Entities: pure outline + symbol */
+.entity * { vector-effect: non-scaling-stroke; }
+.entity .shape, .entity .detail {
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.entity.hq .shape, .entity.hq .detail { stroke: #5fc8a8; }
+.entity.hq .shape { fill: rgba(95, 200, 168, 0.06); }
+.entity.hq .flag { fill: #5fc8a8; stroke: none; }
+
+.entity.node .shape { stroke: #e2b04e; fill: rgba(226, 176, 78, 0.12); }
+
+.entity.worker .shape, .entity.worker .detail { stroke: #6fd3ff; }
+.entity.worker .shape { fill: rgba(111, 211, 255, 0.08); }
+
+/* Selection highlight */
+.entity .selmark {
+  display: none;
+  fill: none;
+  stroke: #ffd75e;
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+}
+.entity.selected .selmark { display: block; }
+
+/* Box-select rubber band */
+#boxsel {
+  fill: rgba(255, 215, 94, 0.07);
+  stroke: #ffd75e;
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+  vector-effect: non-scaling-stroke;
+}
