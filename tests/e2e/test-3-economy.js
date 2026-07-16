@@ -16,20 +16,20 @@ exports.run = async () => {
   const miners = await g.units();
   assert(distinct(miners.map(u => u.hex)), 'miners share a hex');
 
-  // Training: needs HQ selected + enough ore.
+  // Training: the button only exists while an HQ is selected (dynamic bar).
   await page.evaluate(() => { Game.ore = 25; Game.updateOre(); });
   await page.click('#btn-deselect');
-  assert(await page.evaluate(() => document.getElementById('btn-train').disabled),
-    'train enabled with no HQ selected');
+  assert(await page.evaluate(() => !document.getElementById('btn-train-worker')),
+    'train button shown with no HQ selected');
   await g.tapWorld(560, 656); // HQ
-  assert(!await page.evaluate(() => document.getElementById('btn-train').disabled),
+  assert(!await page.evaluate(() => document.getElementById('btn-train-worker').disabled),
     'train disabled with HQ selected and ore');
-  await page.click('#btn-train');
-  await page.click('#btn-train');
+  await page.click('#btn-train-worker');
+  await page.click('#btn-train-worker');
   const after = await page.evaluate(() => ({
     ore: Game.ore,
     n: Entities.list.filter(e => e.type === 'worker').length,
-    disabled: document.getElementById('btn-train').disabled,
+    disabled: document.getElementById('btn-train-worker').disabled,
   }));
   assert(after.n === 5, `expected 5 workers after training 2, got ${after.n}`);
   assert(after.ore === 5, `expected 5 ore left, got ${after.ore}`);

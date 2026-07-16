@@ -32,6 +32,11 @@ const CONFIG = {
   MINE_TIME: 1.2,   // seconds spent at the node per load
   CARRY: 5,         // ore per trip
   WORKER_COST: 10,  // ore to train a worker at the main building
+
+  SOLDIER_SPEED: 80,   // a bit slower than workers
+  SOLDIER_COST: 15,    // ore to train a soldier at a barracks
+  BARRACKS_COST: 30,   // ore to place a barracks construction site
+  BARRACKS_BUILD: 10,  // worker-seconds of construction work to finish it
 };
 
 // Derived helpers.

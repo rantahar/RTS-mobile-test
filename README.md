@@ -16,8 +16,22 @@ over `file://`), or serve the directory statically.
 | Mouse wheel | Zoom (desktop) |
 | ◎ / + / − | Recenter / zoom buttons |
 | Macro / Hex | Debug overlays: 3×3 macro grid, unit hex lattice |
-| Worker ◆10 | Train a worker at the selected main building |
-| Stop / ✕ | Halt selected units' commands / deselect |
+| ✕ | Deselect (long tap does the same) |
+
+The rest of the bottom bar is **dynamic** — buttons come from the selection:
+
+| Selection | Buttons |
+|---|---|
+| Main building | Worker ◆10 (train) |
+| Barracks | Soldier ◆15 (train) |
+| Worker(s) | Barracks ◆30 (build), Stop |
+| Any units | Stop |
+
+Building: tap the build button to arm it, then tap the map to place the
+construction site (green flash = placed, red = invalid spot). The site is
+paid up front, blocks the map immediately, and the selected workers walk
+over and construct it (more workers build faster). Tapping an unfinished
+site with workers selected resumes construction.
 
 Gestures are remappable: `CONFIG.GESTURE_MAP` (js/config.js) maps recognized
 gestures to named actions in js/actions.js.
@@ -74,5 +88,7 @@ model code never calls the UI.
 
 Working: selection, command taps, group moves with hex-packed arrival,
 two-level pathfinding with string pulling, unit collisions/queueing, mining
-economy, training. Next candidates: army unit + attack (range-slot arcs),
-control groups, depleting resource nodes, build placement.
+economy, training, worker-built barracks + soldiers, selection-driven
+action bar. Next candidates: attack command (range-slot arcs), group-select
+buttons (all mains / production / idle workers / army + assignable),
+strategic zoom-out, depleting resource nodes.
