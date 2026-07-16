@@ -43,6 +43,7 @@ const Actions = {
         }
         Camera.x -= (data.c.x - this._c.x) / Camera.zoom;
         Camera.y -= (data.c.y - this._c.y) / Camera.zoom;
+        Camera.clamp(vw, vh);
         this._c = data.c;
         this._d = data.d;
         Camera.apply(Input.world);
@@ -50,6 +51,16 @@ const Actions = {
       },
       end() { this._c = null; },
       cancel() { this._c = null; },
+    },
+
+    // Mouse wheel: zoom anchored at the cursor.
+    zoom: {
+      fire(data) {
+        const { vw, vh } = Input.viewport();
+        Camera.setZoom(Camera.zoom * (data.delta < 0 ? 1.1 : 1 / 1.1), vw, vh, data.s.x, data.s.y);
+        Camera.apply(Input.world);
+        Game.updateReadout();
+      },
     },
   },
 

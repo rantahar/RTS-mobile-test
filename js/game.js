@@ -12,10 +12,19 @@ const Game = {
     this.overlay = document.getElementById('layer-overlay');
 
     Hex.init();
+    Sim.init();
     Render.init();
-    Entities.init();
+    View.init();
     Input.init(this.svg, this.world);
+
+    // Model -> app/view wiring.
+    Entities.hooks.spawned = (e) => View.add(e);
+    Entities.hooks.removed = (e) => {
+      View.remove(e);
+      if (e.kind === 'structure' && Render.showHex) Render.drawGrid();
+    };
     Sim.hooks.deposit = (n) => this.addOre(n);
+    Selection.onChange = () => this.updateSelInfo();
 
     this.spawnStartLayout();
 
@@ -27,12 +36,26 @@ const Game = {
     this.updateSelInfo();
     this.updateOre();
 
-    Sim.start();
+    this.startLoop();
 
     window.addEventListener('resize', () => {
       Camera.apply(this.world);
       this.updateReadout();
     });
+  },
+
+  // Frame loop: step the simulation, then mirror model state into the SVG.
+  startLoop() {
+    let last = null;
+    const frame = (ts) => {
+      if (last == null) last = ts;
+      const dt = Math.min((ts - last) / 1000, 0.05); // clamp tab-sleep jumps
+      last = ts;
+      Sim.tick(dt);
+      View.sync();
+      requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
   },
 
   spawnStartLayout() {

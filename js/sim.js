@@ -17,27 +17,19 @@
 // before entering. If that hex is held by someone else the unit waits
 // REPATH_WAIT seconds, then replans the leg around them.
 const Sim = {
-  _last: null,
   // Outbound notifications; the app layer (Game) assigns these.
   hooks: {
     deposit(amount, unit) {}, // a worker delivered `amount` ore
   },
   REPATH_WAIT: 0.1,           // blocked "thinking time" before replanning the leg
   ADJACENT_PX: CONFIG.TILE * 1.10, // "standing at the structure" distance
-  LEG_MAX_PX: null,           // max fine-leg length (< 9 hex units), set in start()
+  LEG_MAX_PX: null,           // max fine-leg length (< 9 hex units), set in init()
   MAX_LEG_FAILS: 3,           // consecutive failed legs before a full replan
 
-  start() {
+  // Call after Hex.init(). The frame loop lives in Game; tests call tick()
+  // directly with a fixed dt.
+  init() {
     this.LEG_MAX_PX = Hex.S * 8.5; // "coarse points less than 9 units away"
-    requestAnimationFrame((ts) => this._frame(ts));
-  },
-
-  _frame(ts) {
-    if (this._last == null) this._last = ts;
-    const dt = Math.min((ts - this._last) / 1000, 0.05); // clamp tab-sleep jumps
-    this._last = ts;
-    this.tick(dt);
-    requestAnimationFrame((t) => this._frame(t));
   },
 
   tick(dt) {
@@ -125,7 +117,6 @@ const Sim = {
     e.y += uy * step;
     if (step >= d - 0.001) { e.x = wp.x; e.y = wp.y; e.route.shift(); }
     this.updateHexReg(e);
-    Entities.place(e);
     return e.route.length ? 'moving' : 'arrived';
   },
 
@@ -210,7 +201,6 @@ const Sim = {
   },
 
   setCarrying(e, on) {
-    e.carrying = on;
-    e.el.classList.toggle('carrying', on);
+    e.carrying = on; // View.sync renders the cargo dot
   },
 };

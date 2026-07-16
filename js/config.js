@@ -24,6 +24,7 @@ const CONFIG = {
     hold: 'deselect',
     drag1: 'boxSelect',
     drag2: 'camera',
+    wheel: 'zoom',
   },
 
   // Units / economy
