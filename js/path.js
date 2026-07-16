@@ -213,10 +213,12 @@ const Path = {
   },
 
   // Line of sight between two world points: clear of every structure
-  // footprint (expanded by the hex clearance margin) AND of other units'
-  // bodies, so smoothing never collapses an A* detour back through a unit
-  // that is standing on the straight line. Hex neighbors are 1 spacing
-  // apart, so the clearance must stay below that to keep legal steps legal.
+  // footprint (expanded by the hex clearance margin) AND — when unitAware —
+  // of every hex other units OCCUPY or have RESERVED (the same unitOcc table
+  // A* plans against), so smoothing never collapses an A* detour back
+  // through somebody's hex. Clearance is 0.75 spacing: a hex mutually
+  // adjacent to two path hexes sits sqrt(3)/2 ~ 0.87 spacing off their
+  // connecting segment, so legal A* steps always stay legal.
   // (Linear scans are fine while entity counts are small; bucket by macro
   // tile when they grow.)
   UNIT_CLEAR2: null, // (0.75 * spacing)^2, set on first use
@@ -225,12 +227,17 @@ const Path = {
     const m = Hex.MARGIN, T = CONFIG.TILE;
     if (this.UNIT_CLEAR2 == null) this.UNIT_CLEAR2 = (Hex.S * 0.75) ** 2;
     for (const s of Entities.list) {
-      if (s.kind === 'structure') {
-        if (this.segRect(a, b,
-            s.tx * T - m, s.ty * T - m,
-            (s.tx + s.w) * T + m, (s.ty + s.h) * T + m)) return false;
-      } else if (unitAware && s !== self) {
-        if (this.segPointDist2(a, b, s.x, s.y) < this.UNIT_CLEAR2) return false;
+      if (s.kind !== 'structure') continue;
+      if (this.segRect(a, b,
+          s.tx * T - m, s.ty * T - m,
+          (s.tx + s.w) * T + m, (s.ty + s.h) * T + m)) return false;
+    }
+    if (unitAware) {
+      for (const [idx, id] of GameMap.unitOcc) {
+        if (self && id === self.id) continue;
+        const col = idx % Hex.STRIDE, row = (idx - col) / Hex.STRIDE;
+        const c = Hex.centerOf(col, row);
+        if (this.segPointDist2(a, b, c.x, c.y) < this.UNIT_CLEAR2) return false;
       }
     }
     return true;
