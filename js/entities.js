@@ -37,15 +37,23 @@ const Entities = {
   },
 
   spawnUnit(type, tx, ty) {
-    const c = GameMap.tileToWorldCenter(tx, ty);
+    // Land on the requested tile, or the nearest free one if it's taken.
+    const t = Path.free(tx, ty, null) ? { tx, ty } : Path.nearestFreeTile(tx, ty, null, null);
+    if (!t) return null;
+    const c = GameMap.tileToWorldCenter(t.tx, t.ty);
     const e = {
       id: this.nextId++,
       kind: 'unit',
       type,
       x: c.x, y: c.y,
+      tx: t.tx, ty: t.ty,
+      curTile: GameMap.idx(t.tx, t.ty),
       r: CONFIG.TILE * 0.42,
+      cmd: null,
+      path: null,
       el: null,
     };
+    GameMap.unitOcc.set(e.curTile, e.id);
     e.el = this.makeEl(e);
     this.layer.appendChild(e.el);
     this.list.push(e);

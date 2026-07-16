@@ -30,6 +30,7 @@ const CONFIG = {
   WORKER_SPEED: 96, // world px per second (3 tiles/s)
   MINE_TIME: 1.2,   // seconds spent at the node per load
   CARRY: 5,         // ore per trip
+  WORKER_COST: 10,  // ore to train a worker at the main building
 };
 
 // Derived helpers.
