@@ -2,10 +2,10 @@
 const CONFIG = {
   TILE: 32,        // world px per micro tile (1x1) at zoom = 1
   MACRO: 3,        // micro tiles per macro-tile edge (3x3 => log(n)-ish search later)
-  MAP_W: 42,       // map width  in micro tiles
-  MAP_H: 42,       // map height in micro tiles
+  MAP_W: 84,       // map width  in micro tiles
+  MAP_H: 84,       // map height in micro tiles
 
-  MIN_ZOOM: 0.35,
+  MIN_ZOOM: 0.14,  // low enough to see the whole map (strategic view: later)
   MAX_ZOOM: 2.5,
   ZOOM_STEP: 1.25, // multiplier per +/- button press
 
@@ -37,6 +37,30 @@ const CONFIG = {
   SOLDIER_COST: 15,    // ore to train a soldier at a barracks
   BARRACKS_COST: 30,   // ore to place a barracks construction site
   BARRACKS_BUILD: 10,  // worker-seconds of construction work to finish it
+
+  // Combat
+  WORKER_HP: 30,
+  SOLDIER_HP: 40,
+  SOLDIER_DMG: 4,      // damage per swing
+  SOLDIER_RATE: 0.8,   // seconds between swings
+  SOLDIER_RANGE: 2,    // attack range in hex spacings (range slots sit here)
+  SOLDIER_AGGRO: 5,    // auto-acquire radius in hex spacings
+  HQ_HP: 400,
+  BARRACKS_HP: 220,
+  LAB_HP: 160,
+  LAB_COST: 25,
+  LAB_BUILD: 8,        // worker-seconds to construct a lab
+
+  // Upgrades (researched at the lab)
+  WEAPON_BONUS: 2,       // +damage per weapons level
+  WEAPON_COST_BASE: 30,  // level 1 cost; each level adds WEAPON_COST_STEP
+  WEAPON_COST_STEP: 20,
+  WEAPON_TIME: 12,       // research seconds per level
+
+  // Enemy AI
+  ENEMY_PRODUCE_S: 16, // seconds per enemy soldier
+  ENEMY_WAVE: 3,       // idle soldiers needed before it attacks
+  ENEMY_CAP: 6,        // max simultaneous enemy soldiers
 };
 
 // Derived helpers.

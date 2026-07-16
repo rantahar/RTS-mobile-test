@@ -7,6 +7,7 @@ const HQ = { x0: 480, x1: 640, y0: 576, y1: 736 }; // world-px footprint
 exports.run = async () => {
   const g = await launchGame();
   const { page } = g;
+  await g.center(672, 672); // the framing the coordinates below assume
 
   // 1. Open ground (no units near the line): route collapses to ~1 waypoint,
   //    movement is collinear.

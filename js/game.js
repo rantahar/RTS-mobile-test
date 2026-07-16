@@ -6,6 +6,7 @@ const Game = {
   boxEl: null,
   ore: 0,
   placing: null, // structure type being placed (build button armed), or null
+  groups: { g1: new Set(), g2: new Set(), g3: new Set() }, // assignable ids
 
   init() {
     this.svg = document.getElementById('view');
@@ -14,6 +15,7 @@ const Game = {
 
     Hex.init();
     Sim.init();
+    AI.init();
     Render.init();
     View.init();
     Input.init(this.svg, this.world);
@@ -29,6 +31,12 @@ const Game = {
       this.pulse(s.x, s.y, 'goto');
       this.updateSelInfo(); // a selected site may now offer training
     };
+    Sim.hooks.attack = (a, t) => this.tracer(a, t);
+    Sim.hooks.destroyed = (e) => this.pulse(e.x, e.y, 'attack');
+    Sim.hooks.researched = (b, key) => {
+      this.pulse(b.x, b.y, 'goto');
+      this.updateSelInfo(); // refresh the upgrade button's level/cost
+    };
     Selection.onChange = () => this.updateSelInfo();
 
     this.spawnStartLayout();
@@ -37,6 +45,7 @@ const Game = {
     this.centerCamera();
 
     this.wireButtons();
+    this.wireGroupBar();
     this.updateReadout();
     this.updateSelInfo();
     this.updateOre();
@@ -57,6 +66,7 @@ const Game = {
       const dt = Math.min((ts - last) / 1000, 0.05); // clamp tab-sleep jumps
       last = ts;
       Sim.tick(dt);
+      AI.tick(dt);
       View.sync();
       requestAnimationFrame(frame);
     };
@@ -70,11 +80,16 @@ const Game = {
     let p = tc(22, 21); Entities.spawnUnit('worker', p.x, p.y);
     p = tc(23, 23); Entities.spawnUnit('worker', p.x, p.y);
     p = tc(21, 24); Entities.spawnUnit('worker', p.x, p.y);
+    // Enemy camp in the far corner; the AI (js/ai.js) runs it.
+    Entities.spawnStructure('barracks', 72, 70, 1);
   },
 
+  // Center on the player's base (falls back to the map middle without one).
   centerCamera() {
     const vw = this.svg.clientWidth, vh = this.svg.clientHeight;
-    Camera.centerOnWorld(CONFIG.MAP_PX_W / 2, CONFIG.MAP_PX_H / 2, vw, vh);
+    const hq = Entities.list.find(e => e.def.depot && e.owner === 0);
+    Camera.centerOnWorld(hq ? hq.x : CONFIG.MAP_PX_W / 2,
+                         hq ? hq.y : CONFIG.MAP_PX_H / 2, vw, vh);
     Camera.apply(this.world);
   },
 
@@ -95,8 +110,9 @@ const Game = {
 
   // Route a command tap: each unit's TYPE decides what to do about the
   // target (def.orderAt); units with no specific reaction group-move to it.
+  // Only the player's own units take commands.
   issueCommand(sel, hit, w) {
-    const units = sel.filter(e => e.kind === 'unit');
+    const units = sel.filter(e => e.kind === 'unit' && e.owner === 0);
 
     if (hit) {
       const movers = [];
@@ -114,7 +130,9 @@ const Game = {
       }
       if (movers.length) this.moveGroup(movers, hit.x, hit.y);
       if (commanded || movers.length) {
-        this.pulse(hit.x, hit.y, hit.def.mineable ? 'mine' : 'goto');
+        const hostile = hit.owner != null && hit.owner !== 0;
+        this.pulse(hit.x, hit.y,
+          hit.def.mineable ? 'mine' : hostile ? 'attack' : 'goto');
       }
       return;
     }
@@ -147,13 +165,20 @@ const Game = {
     if (!b || !b.def.trains || b.underConstruction) return;
     const def = Types[b.def.trains];
     if (this.ore < def.cost) return;
-    const hc = Hex.fromWorld(b.x, b.y + (b.h / 2) * CONFIG.TILE); // bias toward the door side
-    const h = hc && Hex.bestAdjacent(b, hc.col, hc.row, null);
-    if (!h) return; // completely walled in
+    const u = Entities.trainAt(b);
+    if (!u) return; // completely walled in
     this.addOre(-def.cost);
-    const c = Hex.centerOf(h.col, h.row);
-    const u = Entities.spawnUnit(b.def.trains, c.x, c.y, b.owner);
-    if (u) this.pulse(u.x, u.y, 'goto');
+    this.pulse(u.x, u.y, 'goto');
+  },
+
+  // Start researching an upgrade at a building (pay up front).
+  research(b, key) {
+    const up = Upgrades[key];
+    const cost = up.cost(Sim.upgradeLevel(0, key));
+    if (this.ore < cost) return;
+    if (!Sim.startResearch(b, key)) return;
+    this.addOre(-cost);
+    this.updateSelInfo(); // button flips to "researching"
   },
 
   // ---- Building placement ----
@@ -214,7 +239,7 @@ const Game = {
   // unit selected gets Stop.
   actionButtons() {
     const btns = [];
-    const sel = Selection.entities;
+    const sel = Selection.entities.filter(e => e.owner === 0); // own stuff only
     const units = sel.filter(e => e.kind === 'unit');
 
     const buildable = new Set();
@@ -243,6 +268,28 @@ const Game = {
         disabled: this.ore < def.cost,
         onTap: () => this.trainUnit(b),
       });
+    }
+
+    // Upgrade buttons: one per upgrade key, on the first selected building
+    // offering it. Label carries level/cost so the bar rebuilds on changes.
+    const seen = new Set();
+    for (const b of sel) {
+      if (b.kind !== 'structure' || !b.def.upgrades || b.underConstruction) continue;
+      for (const key of b.def.upgrades) {
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const up = Upgrades[key];
+        const lvl = Sim.upgradeLevel(0, key);
+        const done = lvl >= up.maxLevel;
+        btns.push({
+          id: `btn-up-${key}`,
+          label: done ? `${up.name} MAX`
+               : b.research ? `${up.name}…`
+               : `${up.name} L${lvl + 1} ◆${up.cost(lvl)}`,
+          disabled: done || !!b.research || this.ore < up.cost(lvl),
+          onTap: () => this.research(b, key),
+        });
+      }
     }
 
     if (units.length) {
@@ -284,6 +331,16 @@ const Game = {
     });
   },
 
+  // Brief attack flash from attacker to target.
+  tracer(a, t) {
+    const l = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    l.setAttribute('class', 'tracer');
+    l.setAttribute('x1', a.x); l.setAttribute('y1', a.y);
+    l.setAttribute('x2', t.x); l.setAttribute('y2', t.y);
+    this.overlay.appendChild(l);
+    setTimeout(() => l.remove(), 110);
+  },
+
   // Brief expanding-ring feedback at a command target.
   pulse(x, y, kind) {
     const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -294,6 +351,75 @@ const Game = {
       </circle>`;
     this.overlay.appendChild(g);
     setTimeout(() => g.remove(), 500);
+  },
+
+  // ---- Group buttons (top row): quick selections while looking away ----
+
+  // Query-style groups recompute from the world; g1..g3 are assigned sets.
+  groupMembers(key) {
+    const own = Entities.list.filter(e => e.owner === 0);
+    switch (key) {
+      case 'mains':
+        return own.filter(e => e.def.depot);
+      case 'production':
+        return own.filter(e => e.kind === 'structure' && e.def.trains &&
+          !e.def.depot && !e.underConstruction);
+      case 'upgrades':
+        return own.filter(e => e.kind === 'structure' && e.def.upgrades &&
+          !e.underConstruction);
+      case 'idle': // workers with nothing to do
+        return own.filter(e => e.kind === 'unit' && !e.def.damage && !e.cmd);
+      case 'army':
+        return own.filter(e => e.kind === 'unit' && e.def.damage);
+      default:
+        return [...this.groups[key]]
+          .map(id => Entities.byId.get(id)).filter(Boolean);
+    }
+  },
+
+  // Tap: select the group. Tapping again (same selection) centers the camera
+  // on it. Empty groups are ignored so a mistap doesn't clear anything.
+  selectGroup(key) {
+    const es = this.groupMembers(key);
+    if (!es.length) return;
+    const same = es.length === Selection.ids.size &&
+      es.every(e => Selection.ids.has(e.id));
+    if (same) {
+      const cx = es.reduce((s, e) => s + e.x, 0) / es.length;
+      const cy = es.reduce((s, e) => s + e.y, 0) / es.length;
+      Camera.centerOnWorld(cx, cy, this.svg.clientWidth, this.svg.clientHeight);
+      Camera.apply(this.world);
+      this.updateReadout();
+    } else {
+      Selection.setTo(es);
+    }
+  },
+
+  assignGroup(key) {
+    this.groups[key] = new Set(Selection.ids);
+  },
+
+  // Tap = recall, press-and-hold = assign (g1..g3 only).
+  wireGroupBar() {
+    for (const btn of document.querySelectorAll('#groupbar .btn')) {
+      const key = btn.dataset.group;
+      let timer = null, held = false;
+      btn.addEventListener('pointerdown', () => {
+        held = false;
+        if (this.groups[key]) {
+          timer = setTimeout(() => {
+            held = true;
+            this.assignGroup(key);
+            btn.classList.add('flash');
+            setTimeout(() => btn.classList.remove('flash'), 350);
+          }, 450);
+        }
+      });
+      const clear = () => clearTimeout(timer);
+      btn.addEventListener('pointerup', () => { clear(); if (!held) this.selectGroup(key); });
+      btn.addEventListener('pointerleave', clear);
+      btn.addEventListener('pointercancel', clear);
+    }
   },
 
   // ---- Box select ----

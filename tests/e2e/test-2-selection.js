@@ -5,6 +5,7 @@ const { launchGame, assert, distinct } = require('./helpers');
 exports.run = async () => {
   const g = await launchGame();
   const { page } = g;
+  await g.center(672, 672); // the framing the coordinates below assume
 
   // Tap worker -> selected (shape hit-test).
   await g.tapWorld(720, 679);
