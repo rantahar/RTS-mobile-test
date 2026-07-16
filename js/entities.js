@@ -96,7 +96,8 @@ const Entities = {
         <circle class="selmark" r="${r + 4}"/>
         <circle class="shape" r="${r}"/>
         <path class="detail" d="M-7 8 L7 -7"/>
-        <path class="detail" d="M-3 -11 Q9 -13 12 -2"/>`;
+        <path class="detail" d="M-3 -11 Q9 -13 12 -2"/>
+        <circle class="cargo" cx="${r * 0.55}" cy="${r * 0.55}" r="4.5"/>`;
     }
     return `<circle class="shape" r="10"/>`;
   },

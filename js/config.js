@@ -8,6 +8,28 @@ const CONFIG = {
   MIN_ZOOM: 0.35,
   MAX_ZOOM: 2.5,
   ZOOM_STEP: 1.25, // multiplier per +/- button press
+
+  // Gestures
+  TAP_SLOP: 10,    // screen px of movement before a tap becomes a drag
+  HOLD_MS: 500,    // press duration for tap-and-hold
+
+  // Gesture -> action mapping. Input only recognizes gestures; what they DO
+  // is looked up here and implemented in js/actions.js. Remap freely.
+  //   tap:   quick press+release            (fire)
+  //   hold:  press held still >= HOLD_MS    (fire)
+  //   drag1: one-finger drag                (start/update/end/cancel)
+  //   drag2: two-finger drag + pinch        (start/update/end/cancel)
+  GESTURE_MAP: {
+    tap: 'smartTap',
+    hold: 'deselect',
+    drag1: 'boxSelect',
+    drag2: 'camera',
+  },
+
+  // Units / economy
+  WORKER_SPEED: 96, // world px per second (3 tiles/s)
+  MINE_TIME: 1.2,   // seconds spent at the node per load
+  CARRY: 5,         // ore per trip
 };
 
 // Derived helpers.

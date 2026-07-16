@@ -62,6 +62,7 @@ body {
   text-align: right;
 }
 .readout.grow { flex: 1 1 auto; text-align: center; color: #ffd75e; min-width: 0; }
+.readout.ore { color: #e2b04e; font-size: 14px; font-weight: 700; min-width: 0; white-space: nowrap; }
 
 /* SVG game viewport fills the remaining space */
 #view {
@@ -106,6 +107,16 @@ body {
   stroke-dasharray: 6 4;
 }
 .entity.selected .selmark { display: block; }
+
+/* Cargo dot shown while a worker carries ore */
+.entity.worker .cargo { display: none; fill: #e2b04e; stroke: none; }
+.entity.worker.carrying .cargo { display: block; }
+
+/* Command feedback pulse */
+.pulse { fill: none; stroke-width: 2.5; }
+.pulse.move { stroke: #5fc8a8; }
+.pulse.mine { stroke: #e2b04e; }
+.pulse.goto { stroke: #6fd3ff; }
 
 /* Box-select rubber band */
 #boxsel {
