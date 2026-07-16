@@ -1,18 +1,19 @@
-// Pointer/gesture handling.
-//   - tap            -> select entity under finger (shape hit-test) / clear
-//   - 1-finger drag  -> box select (rubber band)
-//   - 2-finger drag  -> pan camera
-//   - pinch          -> zoom
-//   - mouse wheel    -> zoom (desktop convenience)
-// (tap-and-hold is a later step.)
+// Gesture recognizer. Detects abstract gestures and dispatches them through
+// CONFIG.GESTURE_MAP to js/actions.js — no game logic lives here.
+//
+// Recognized gestures:
+//   tap    quick press + release without moving        -> fire
+//   hold   press held still for CONFIG.HOLD_MS         -> fire
+//   drag1  one-finger drag                             -> start/update/end
+//   drag2  two-finger drag + pinch                     -> start/update/end
+// A second finger landing mid-drag1 cancels it and starts drag2.
 const Input = {
   svg: null,
   world: null,
   pointers: new Map(),   // pointerId -> {x, y} in svg-local px
-  gesture: null,         // 'pending' | 'box' | 'twofinger' | null
-  downPt: null,          // screen pt where the first finger landed
-  boxStartWorld: null,   // world pt where box select began
-  TAP_SLOP: 10,          // screen px of movement before a tap becomes a drag
+  state: null,           // 'pending' | 'drag1' | 'drag2' | 'held' | null
+  downPt: null,          // where the first finger landed (screen px)
+  holdTimer: null,
 
   init(svg, world) {
     this.svg = svg;
@@ -44,62 +45,11 @@ const Input = {
     return { vw: this.svg.clientWidth, vh: this.svg.clientHeight };
   },
 
-  onDown(e) {
-    this.svg.setPointerCapture(e.pointerId);
-    this.pointers.set(e.pointerId, this.localPoint(e));
-    if (this.pointers.size === 1) {
-      this.gesture = 'pending';
-      this.downPt = this.localPoint(e);
-    } else if (this.pointers.size === 2) {
-      // Second finger: whatever was happening becomes camera control.
-      if (this.gesture === 'box') Game.hideBox();
-      this.gesture = 'twofinger';
-      this.twoStart();
-    }
+  oneData(p) {
+    return { s: p, w: Camera.screenToWorld(p.x, p.y) };
   },
 
-  onMove(e) {
-    if (!this.pointers.has(e.pointerId)) return;
-    const p = this.localPoint(e);
-    this.pointers.set(e.pointerId, p);
-
-    if (this.gesture === 'pending') {
-      if (Math.hypot(p.x - this.downPt.x, p.y - this.downPt.y) > this.TAP_SLOP) {
-        this.gesture = 'box';
-        this.boxStartWorld = Camera.screenToWorld(this.downPt.x, this.downPt.y);
-        Game.showBox(this.boxStartWorld, Camera.screenToWorld(p.x, p.y));
-      }
-    } else if (this.gesture === 'box') {
-      Game.showBox(this.boxStartWorld, Camera.screenToWorld(p.x, p.y));
-    } else if (this.gesture === 'twofinger' && this.pointers.size >= 2) {
-      this.twoMove();
-    }
-  },
-
-  onUp(e) {
-    if (!this.pointers.has(e.pointerId)) return;
-    const p = this.localPoint(e);
-    const was = this.gesture;
-    this.pointers.delete(e.pointerId);
-
-    if (was === 'pending' && this.pointers.size === 0) {
-      this.gesture = null;
-      Game.onTap(Camera.screenToWorld(p.x, p.y));
-    } else if (was === 'box' && this.pointers.size === 0) {
-      this.gesture = null;
-      Game.onBoxEnd(this.boxStartWorld, Camera.screenToWorld(p.x, p.y));
-    } else if (was === 'twofinger' && this.pointers.size < 2) {
-      // Leftover finger from a pan shouldn't start selecting.
-      this.gesture = null;
-    }
-    Game.updateReadout();
-  },
-
-  // ---- Two-finger pan + pinch ----
-  _prevCentroid: null,
-  _prevDist: 0,
-
-  centroidDist() {
+  twoData() {
     const [a, b] = [...this.pointers.values()].slice(0, 2);
     return {
       c: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
@@ -107,29 +57,72 @@ const Input = {
     };
   },
 
-  twoStart() {
-    const { c, d } = this.centroidDist();
-    this._prevCentroid = c;
-    this._prevDist = d;
+  clearHold() {
+    if (this.holdTimer) { clearTimeout(this.holdTimer); this.holdTimer = null; }
   },
 
-  twoMove() {
-    const { vw, vh } = this.viewport();
-    const { c, d } = this.centroidDist();
+  onDown(e) {
+    this.svg.setPointerCapture(e.pointerId);
+    const p = this.localPoint(e);
+    this.pointers.set(e.pointerId, p);
 
-    // Pinch zoom, anchored at the current centroid.
-    if (this._prevDist > 0 && d > 0) {
-      Camera.setZoom(Camera.zoom * (d / this._prevDist), vw, vh, c.x, c.y);
+    if (this.pointers.size === 1) {
+      this.state = 'pending';
+      this.downPt = p;
+      this.holdTimer = setTimeout(() => {
+        if (this.state === 'pending') {
+          this.state = 'held';
+          Actions.dispatch('hold', 'fire', this.oneData(this.downPt));
+        }
+      }, CONFIG.HOLD_MS);
+    } else if (this.pointers.size === 2) {
+      this.clearHold();
+      if (this.state === 'drag1') Actions.dispatch('drag1', 'cancel', {});
+      this.state = 'drag2';
+      Actions.dispatch('drag2', 'start', this.twoData());
     }
+    // 3+ fingers: ignored, drag2 keeps using the first two.
+  },
 
-    // Pan by centroid movement (screen px -> world px via zoom).
-    Camera.x -= (c.x - this._prevCentroid.x) / Camera.zoom;
-    Camera.y -= (c.y - this._prevCentroid.y) / Camera.zoom;
+  onMove(e) {
+    if (!this.pointers.has(e.pointerId)) return;
+    const p = this.localPoint(e);
+    this.pointers.set(e.pointerId, p);
 
-    this._prevCentroid = c;
-    this._prevDist = d;
+    if (this.state === 'pending') {
+      if (Math.hypot(p.x - this.downPt.x, p.y - this.downPt.y) > CONFIG.TAP_SLOP) {
+        this.clearHold();
+        this.state = 'drag1';
+        Actions.dispatch('drag1', 'start', this.oneData(this.downPt));
+        Actions.dispatch('drag1', 'update', this.oneData(p));
+      }
+    } else if (this.state === 'drag1') {
+      Actions.dispatch('drag1', 'update', this.oneData(p));
+    } else if (this.state === 'drag2' && this.pointers.size >= 2) {
+      Actions.dispatch('drag2', 'update', this.twoData());
+    }
+  },
 
-    Camera.apply(this.world);
+  onUp(e) {
+    if (!this.pointers.has(e.pointerId)) return;
+    const p = this.localPoint(e);
+    const was = this.state;
+    this.pointers.delete(e.pointerId);
+    this.clearHold();
+
+    if (was === 'pending' && this.pointers.size === 0) {
+      this.state = null;
+      Actions.dispatch('tap', 'fire', this.oneData(p));
+    } else if (was === 'drag1' && this.pointers.size === 0) {
+      this.state = null;
+      Actions.dispatch('drag1', 'end', this.oneData(p));
+    } else if (was === 'drag2' && this.pointers.size < 2) {
+      // A leftover finger from a two-finger gesture shouldn't start selecting.
+      this.state = null;
+      Actions.dispatch('drag2', 'end', {});
+    } else if (was === 'held' && this.pointers.size === 0) {
+      this.state = null;
+    }
     Game.updateReadout();
   },
 };

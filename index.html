@@ -14,6 +14,7 @@
     <button class="btn" id="btn-zoom-out">&minus;</button>
     <div class="spacer"></div>
     <button class="btn" id="btn-macro" aria-pressed="true">Macro</button>
+    <div class="readout ore" id="ore">&#9670; 0</div>
     <div class="readout" id="readout">&nbsp;</div>
   </div>
 
@@ -31,7 +32,8 @@
     <button class="btn" disabled>Build</button>
     <button class="btn" disabled>Train</button>
     <div class="readout grow" id="selinfo"></div>
-    <button class="btn" disabled>Stop</button>
+    <button class="btn" id="btn-stop">Stop</button>
+    <button class="btn" id="btn-deselect">&#10005;</button>
   </div>
 
   <!-- Classic scripts (no build step, works over file://) -->
@@ -41,7 +43,9 @@
   <script src="js/entities.js"></script>
   <script src="js/selection.js"></script>
   <script src="js/render.js"></script>
+  <script src="js/actions.js"></script>
   <script src="js/input.js"></script>
+  <script src="js/sim.js"></script>
   <script src="js/game.js"></script>
 </body>
 </html>
