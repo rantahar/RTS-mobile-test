@@ -10,12 +10,16 @@ const GameMap = {
   macroW: Math.ceil(CONFIG.MAP_W / CONFIG.MACRO),
   macroH: Math.ceil(CONFIG.MAP_H / CONFIG.MACRO),
 
-  // Per micro tile: which entity (id) occupies it, or null. Used for hit-testing
-  // by tile later and as pathfinding obstacles.
+  // Per micro tile: which structure (id) occupies it, or null. Pathfinding
+  // obstacles.
   occupancy: null,
+  // Hex idx (see js/hex.js) -> unit id. A unit owns the hex under its center
+  // plus (while moving) the next hex it has reserved. Units block each other.
+  unitOcc: null,
 
   init() {
     this.occupancy = new Array(this.w * this.h).fill(null);
+    this.unitOcc = new Map();
   },
 
   inBounds(tx, ty) {

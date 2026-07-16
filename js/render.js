@@ -2,6 +2,7 @@
 const Render = {
   gridEl: null,
   showMacro: true,
+  showHex: false,
 
   init() {
     this.gridEl = document.getElementById('layer-grid');
@@ -37,6 +38,19 @@ const Render = {
       svg += `<path class="macro" d="${mac}" />`;
     }
 
+    // Debug: dots on every structure-free hex of the unit lattice.
+    if (this.showHex) {
+      let dots = '';
+      for (let row = 0; row < Hex.rows; row++) {
+        for (let col = 0; col < Hex.cols(row); col++) {
+          if (!Hex.structFree(col, row)) continue;
+          const c = Hex.centerOf(col, row);
+          dots += `M${c.x.toFixed(1)} ${c.y.toFixed(1)}h0.01`;
+        }
+      }
+      svg += `<path class="hexdots" d="${dots}" />`;
+    }
+
     this.gridEl.innerHTML = svg;
   },
 
@@ -44,5 +58,11 @@ const Render = {
     this.showMacro = !this.showMacro;
     this.drawGrid();
     return this.showMacro;
+  },
+
+  toggleHex() {
+    this.showHex = !this.showHex;
+    this.drawGrid();
+    return this.showHex;
   },
 };

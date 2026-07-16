@@ -11,6 +11,7 @@ const Game = {
     this.world = document.getElementById('world');
     this.overlay = document.getElementById('layer-overlay');
 
+    Hex.init();
     Render.init();
     Entities.init();
     Input.init(this.svg, this.world);
@@ -37,9 +38,10 @@ const Game = {
     // Main building 5x5, resource node 2x2, a few workers 1x1.
     Entities.spawnStructure('hq', 15, 18, 5, 5);
     Entities.spawnStructure('node', 24, 14, 2, 2);
-    Entities.spawnUnit('worker', 22, 21);
-    Entities.spawnUnit('worker', 23, 23);
-    Entities.spawnUnit('worker', 21, 24);
+    const tc = (tx, ty) => GameMap.tileToWorldCenter(tx, ty);
+    let p = tc(22, 21); Entities.spawnUnit('worker', p.x, p.y);
+    p = tc(23, 23); Entities.spawnUnit('worker', p.x, p.y);
+    p = tc(21, 24); Entities.spawnUnit('worker', p.x, p.y);
   },
 
   centerCamera() {
@@ -70,11 +72,10 @@ const Game = {
       const hq = Entities.list.find(e => e.type === 'hq');
       let any = false;
       for (const u of units) {
-        if (u.type === 'worker') {
-          u.cmd = { type: 'mine', nodeId: hit.id, hqId: hq && hq.id, phase: 'toNode' };
-        } else {
-          u.cmd = { type: 'moveRect', targetId: hit.id };
-        }
+        Sim.clearPath(u);
+        u.cmd = u.type === 'worker'
+          ? { type: 'mine', nodeId: hit.id, hqId: hq && hq.id, phase: 'toNode' }
+          : { type: 'moveRect', targetId: hit.id };
         any = true;
       }
       if (any) this.pulse(hit.x, hit.y, 'mine');
@@ -83,7 +84,10 @@ const Game = {
 
     // Structure: walk to its edge. (Later: rally, garrison, repair...)
     if (hit && hit.kind === 'structure') {
-      for (const u of units) u.cmd = { type: 'moveRect', targetId: hit.id };
+      for (const u of units) {
+        Sim.clearPath(u);
+        u.cmd = { type: 'moveRect', targetId: hit.id };
+      }
       if (units.length) this.pulse(hit.x, hit.y, 'goto');
       return;
     }
@@ -103,23 +107,40 @@ const Game = {
     }
   },
 
-  // Send a group to a point, spread over neighboring tiles so they don't stack.
+  // Send a group to a point; each unit gets its own free hex near the target,
+  // so groups settle into a hex-packed cluster instead of fighting over one spot.
   moveGroup(units, x, y) {
-    const T = CONFIG.TILE;
-    const offs = this.groupOffsets(units.length);
-    units.forEach((u, i) => {
-      u.cmd = { type: 'move', x: x + offs[i][0] * T, y: y + offs[i][1] * T };
-    });
+    const h0 = Hex.fromWorld(x, y);
+    if (!h0) return;
+    const taken = new Set();
+    for (const u of units) {
+      Sim.clearPath(u);
+      const d = Hex.nearestFree(h0.col, h0.row, u, taken);
+      if (!d) { u.cmd = null; continue; }
+      taken.add(Hex.idx(d.col, d.row));
+      u.cmd = { type: 'move', col: d.col, row: d.row };
+    }
   },
 
-  groupOffsets(n) {
-    const offs = [[0, 0]];
-    for (let ring = 1; offs.length < n; ring++) {
-      for (let dx = -ring; dx <= ring && offs.length < n; dx++)
-        for (let dy = -ring; dy <= ring && offs.length < n; dy++)
-          if (Math.max(Math.abs(dx), Math.abs(dy)) === ring) offs.push([dx, dy]);
-    }
-    return offs;
+  // ---- Training ----
+
+  trainWorker() {
+    const hq = Selection.entities.find(e => e.type === 'hq');
+    if (!hq || this.ore < CONFIG.WORKER_COST) return;
+    const hc = Hex.fromWorld(hq.x, hq.y + (hq.h / 2) * CONFIG.TILE); // bias toward the door side
+    const h = hc && Hex.bestAdjacent(hq, hc.col, hc.row, null);
+    if (!h) return; // completely walled in
+    this.addOre(-CONFIG.WORKER_COST);
+    const c = Hex.centerOf(h.col, h.row);
+    const u = Entities.spawnUnit('worker', c.x, c.y);
+    if (u) this.pulse(u.x, u.y, 'goto');
+  },
+
+  updateTrainBtn() {
+    const btn = document.getElementById('btn-train');
+    if (!btn) return;
+    const hqSelected = Selection.entities.some(e => e.type === 'hq');
+    btn.disabled = !(hqSelected && this.ore >= CONFIG.WORKER_COST);
   },
 
   // Brief expanding-ring feedback at a command target.
@@ -168,9 +189,11 @@ const Game = {
   updateOre() {
     const el = document.getElementById('ore');
     if (el) el.textContent = `◆ ${this.ore}`;
+    this.updateTrainBtn();
   },
 
   updateSelInfo() {
+    this.updateTrainBtn();
     const el = document.getElementById('selinfo');
     if (!el) return;
     const es = Selection.entities;
@@ -206,13 +229,21 @@ const Game = {
       const on = Render.toggleMacro();
       e.currentTarget.setAttribute('aria-pressed', String(on));
     });
+    document.getElementById('btn-hex').addEventListener('click', (e) => {
+      const on = Render.toggleHex();
+      e.currentTarget.setAttribute('aria-pressed', String(on));
+    });
     // Stop: halt commands of selected units, keep the selection.
     document.getElementById('btn-stop').addEventListener('click', () => {
-      for (const e of Selection.entities) if (e.kind === 'unit') e.cmd = null;
+      for (const e of Selection.entities) if (e.kind === 'unit') Sim.stopUnit(e);
     });
     // Deselect: clear the selection (long tap does the same).
     document.getElementById('btn-deselect').addEventListener('click', () => {
       Selection.clear();
+    });
+    // Train a worker at the selected main building.
+    document.getElementById('btn-train').addEventListener('click', () => {
+      this.trainWorker();
     });
   },
 
