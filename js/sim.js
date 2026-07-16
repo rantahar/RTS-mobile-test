@@ -1,18 +1,19 @@
 // Simulation loop: pathfinding movement, collisions, command execution.
 //
 // Unit commands (unit.cmd):
-//   { type: 'move', tx, ty }             walk to a tile (or nearest free one)
+//   { type: 'move', col, row }           walk to a hex (or nearest free one)
 //   { type: 'moveRect', targetId }       walk next to a structure
 //   { type: 'mine', nodeId, hqId, phase, t }
 //       phase: 'toNode' -> 'mining' -> 'toHq' -> repeat
 //
-// Movement is tile-to-tile along an A* path (unit.path). Collisions: a unit
-// owns the tile under its center (GameMap.unitOcc) and reserves the next
-// waypoint tile before entering it. If the next tile is held by someone else
-// the unit waits ~0.5s, then replans around them.
+// Movement is hex-to-hex along an A* path (unit.path = [{col,row},...]).
+// Collisions: a unit owns the hex under its center (GameMap.unitOcc, keyed by
+// hex idx) and reserves the next waypoint hex before entering it. If the next
+// hex is held by someone else the unit waits ~0.5s, then replans around them.
 const Sim = {
   _last: null,
-  REPATH_WAIT: 0.5, // seconds to wait when blocked before replanning
+  REPATH_WAIT: 0.5,           // seconds to wait when blocked before replanning
+  ADJACENT_PX: CONFIG.TILE * 1.10, // "standing at the structure" distance
 
   start() {
     requestAnimationFrame((ts) => this._frame(ts));
@@ -37,8 +38,8 @@ const Sim = {
 
     if (c.type === 'move') {
       if (!e.path) {
-        const dest = Path.nearestFreeTile(c.tx, c.ty, e, null);
-        const p = dest && Path.find(e.tx, e.ty, dest.tx, dest.ty, e);
+        const dest = Hex.nearestFree(c.col, c.row, e, null);
+        const p = dest && Path.find(e.hex, dest, e);
         if (!p) { this.stopUnit(e); return; } // unreachable: give up
         e.path = p;
       }
@@ -82,34 +83,40 @@ const Sim = {
   followPath(e, dt) {
     if (!e.path || !e.path.length) return 'arrived';
     const wp = e.path[0];
-    const idx = GameMap.idx(wp.tx, wp.ty);
+    const idx = Hex.idx(wp.col, wp.row);
     const holder = GameMap.unitOcc.get(idx);
     if (holder != null && holder !== e.id) return 'blocked';
-    GameMap.unitOcc.set(idx, e.id); // reserve the next tile
+    GameMap.unitOcc.set(idx, e.id); // reserve the next hex
 
-    const c = GameMap.tileToWorldCenter(wp.tx, wp.ty);
+    const c = Hex.centerOf(wp.col, wp.row);
     if (this.stepToward(e, c.x, c.y, dt)) e.path.shift();
-    this.updateTileReg(e);
+    this.updateHexReg(e);
     Entities.place(e);
     return e.path.length ? 'moving' : 'arrived';
   },
 
-  // Approach a structure until standing on a tile adjacent to its footprint.
-  // Crowded edges make units park nearby and retry, forming a loose queue.
+  // Approach a structure until standing within ADJACENT_PX of its footprint.
+  // Crowded edges make units park a ring out and retry, forming a loose queue.
   approachRect(e, c, s, dt) {
-    if (this.adjacentToRect(e, s)) { this.clearPath(e); c.wait = 0; return true; }
+    if (this.distToRect(e, s) <= this.ADJACENT_PX) {
+      this.clearPath(e);
+      c.wait = 0;
+      return true;
+    }
     if (!e.path) {
-      const t = Path.bestAdjacentTile(s, e.tx, e.ty, e);
-      e.path = (t && Path.find(e.tx, e.ty, t.tx, t.ty, e)) || [];
+      const t = Hex.bestAdjacent(s, e.hex.col, e.hex.row, e);
+      e.path = (t && Path.find(e.hex, t, e)) || [];
     }
     const st = this.followPath(e, dt);
     if (st !== 'moving') this.blockedWait(e, c, dt); // blocked, or arrived short
     return false;
   },
 
-  adjacentToRect(e, s) {
-    return e.tx >= s.tx - 1 && e.tx <= s.tx + s.w &&
-           e.ty >= s.ty - 1 && e.ty <= s.ty + s.h;
+  distToRect(e, s) {
+    const T = CONFIG.TILE;
+    const dx = Math.max(s.tx * T - e.x, 0, e.x - (s.tx + s.w) * T);
+    const dy = Math.max(s.ty * T - e.y, 0, e.y - (s.ty + s.h) * T);
+    return Math.hypot(dx, dy);
   },
 
   blockedWait(e, c, dt) {
@@ -120,7 +127,7 @@ const Sim = {
     }
   },
 
-  // Walk straight toward a point (one tile step at most). Returns true on arrival.
+  // Walk straight toward a point (one hex step at most). Returns true on arrival.
   stepToward(e, x, y, dt) {
     const dx = x - e.x, dy = y - e.y;
     const d = Math.hypot(dx, dy);
@@ -131,23 +138,26 @@ const Sim = {
     return false;
   },
 
-  // Keep the unit registered on the tile under its center, releasing the
-  // tile it left.
-  updateTileReg(e) {
-    const t = GameMap.worldToTile(e.x, e.y);
-    const cur = GameMap.idx(t.tx, t.ty);
-    if (e.curTile !== cur) {
-      if (GameMap.unitOcc.get(e.curTile) === e.id) GameMap.unitOcc.delete(e.curTile);
-      e.tx = t.tx; e.ty = t.ty; e.curTile = cur;
+  // Keep the unit registered on the hex under its center (and the micro tile,
+  // per the original spec), releasing the hex it left.
+  updateHexReg(e) {
+    const h = Hex.fromWorld(e.x, e.y);
+    const cur = Hex.idx(h.col, h.row);
+    if (e.curHex !== cur) {
+      if (GameMap.unitOcc.get(e.curHex) === e.id) GameMap.unitOcc.delete(e.curHex);
+      e.hex = h;
+      e.curHex = cur;
       GameMap.unitOcc.set(cur, e.id);
     }
+    const t = GameMap.worldToTile(e.x, e.y);
+    e.tx = t.tx; e.ty = t.ty;
   },
 
-  // Drop the unit's path and any tile reservation beyond where it stands.
+  // Drop the unit's path and any hex reservation beyond where it stands.
   clearPath(e) {
     e.path = null;
     for (const [idx, id] of GameMap.unitOcc) {
-      if (id === e.id && idx !== e.curTile) GameMap.unitOcc.delete(idx);
+      if (id === e.id && idx !== e.curHex) GameMap.unitOcc.delete(idx);
     }
   },
 

@@ -11,6 +11,7 @@ const Game = {
     this.world = document.getElementById('world');
     this.overlay = document.getElementById('layer-overlay');
 
+    Hex.init();
     Render.init();
     Entities.init();
     Input.init(this.svg, this.world);
@@ -37,9 +38,10 @@ const Game = {
     // Main building 5x5, resource node 2x2, a few workers 1x1.
     Entities.spawnStructure('hq', 15, 18, 5, 5);
     Entities.spawnStructure('node', 24, 14, 2, 2);
-    Entities.spawnUnit('worker', 22, 21);
-    Entities.spawnUnit('worker', 23, 23);
-    Entities.spawnUnit('worker', 21, 24);
+    const tc = (tx, ty) => GameMap.tileToWorldCenter(tx, ty);
+    let p = tc(22, 21); Entities.spawnUnit('worker', p.x, p.y);
+    p = tc(23, 23); Entities.spawnUnit('worker', p.x, p.y);
+    p = tc(21, 24); Entities.spawnUnit('worker', p.x, p.y);
   },
 
   centerCamera() {
@@ -105,17 +107,18 @@ const Game = {
     }
   },
 
-  // Send a group to a point; each unit gets its own free tile near the target
-  // so they park side by side instead of fighting over one tile.
+  // Send a group to a point; each unit gets its own free hex near the target,
+  // so groups settle into a hex-packed cluster instead of fighting over one spot.
   moveGroup(units, x, y) {
-    const t0 = GameMap.worldToTile(x, y);
+    const h0 = Hex.fromWorld(x, y);
+    if (!h0) return;
     const taken = new Set();
     for (const u of units) {
       Sim.clearPath(u);
-      const d = Path.nearestFreeTile(t0.tx, t0.ty, u, taken);
+      const d = Hex.nearestFree(h0.col, h0.row, u, taken);
       if (!d) { u.cmd = null; continue; }
-      taken.add(GameMap.idx(d.tx, d.ty));
-      u.cmd = { type: 'move', tx: d.tx, ty: d.ty };
+      taken.add(Hex.idx(d.col, d.row));
+      u.cmd = { type: 'move', col: d.col, row: d.row };
     }
   },
 
@@ -124,10 +127,12 @@ const Game = {
   trainWorker() {
     const hq = Selection.entities.find(e => e.type === 'hq');
     if (!hq || this.ore < CONFIG.WORKER_COST) return;
-    const t = Path.bestAdjacentTile(hq, hq.tx + hq.w, hq.ty + hq.h, null);
-    if (!t) return; // completely walled in
+    const hc = Hex.fromWorld(hq.x, hq.y + (hq.h / 2) * CONFIG.TILE); // bias toward the door side
+    const h = hc && Hex.bestAdjacent(hq, hc.col, hc.row, null);
+    if (!h) return; // completely walled in
     this.addOre(-CONFIG.WORKER_COST);
-    const u = Entities.spawnUnit('worker', t.tx, t.ty);
+    const c = Hex.centerOf(h.col, h.row);
+    const u = Entities.spawnUnit('worker', c.x, c.y);
     if (u) this.pulse(u.x, u.y, 'goto');
   },
 
@@ -222,6 +227,10 @@ const Game = {
     });
     document.getElementById('btn-macro').addEventListener('click', (e) => {
       const on = Render.toggleMacro();
+      e.currentTarget.setAttribute('aria-pressed', String(on));
+    });
+    document.getElementById('btn-hex').addEventListener('click', (e) => {
+      const on = Render.toggleHex();
       e.currentTarget.setAttribute('aria-pressed', String(on));
     });
     // Stop: halt commands of selected units, keep the selection.

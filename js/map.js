@@ -13,8 +13,8 @@ const GameMap = {
   // Per micro tile: which structure (id) occupies it, or null. Pathfinding
   // obstacles.
   occupancy: null,
-  // Tile idx -> unit id. A unit owns the tile under its center plus (while
-  // moving) the next tile it has reserved. Units block each other.
+  // Hex idx (see js/hex.js) -> unit id. A unit owns the hex under its center
+  // plus (while moving) the next hex it has reserved. Units block each other.
   unitOcc: null,
 
   init() {

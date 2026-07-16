@@ -1,18 +1,18 @@
-// Hierarchical pathfinding.
+// Hierarchical pathfinding for units over the hex lattice.
 //
 // Two levels, per the map design:
-//   1. A* over macro tiles (MACRO x MACRO blocks) to get a coarse route,
-//      ignoring units. A macro tile is passable if any of its micro tiles is
-//      structure-free.
-//   2. A* over micro tiles restricted to a corridor around the macro route
-//      (macro tiles on the route, dilated by one macro ring). This keeps the
-//      fine search proportional to path length instead of map area.
+//   1. A* over macro tiles (MACRO x MACRO squares) to get a coarse route,
+//      structures only. A macro tile is passable if any of its micro tiles
+//      is structure-free.
+//   2. A* over hexes restricted to a corridor around the macro route (macro
+//      tiles on the route, dilated by one macro ring). This keeps the fine
+//      search proportional to path length instead of map area.
 // If the corridor search fails (tight squeeze, unit jam), fall back to an
-// unrestricted micro search.
+// unrestricted hex search.
 //
-// Micro walkability: inside the map, no structure footprint, and no unit
-// registered on the tile (units block each other; Sim resolves jams by
-// waiting + repathing).
+// Hex walkability: inside the map, clear of structure footprints (with a
+// margin so unit circles don't clip buildings), and not owned by another
+// unit. All 6 hex steps cost the same — no corner-cutting cases to handle.
 
 class _MinHeap {
   constructor() { this.a = []; }
@@ -45,7 +45,7 @@ class _MinHeap {
 }
 
 const Path = {
-  DIRS: [
+  DIRS8: [
     [1, 0, 10], [-1, 0, 10], [0, 1, 10], [0, -1, 10],
     [1, 1, 14], [1, -1, 14], [-1, 1, 14], [-1, -1, 14],
   ],
@@ -55,98 +55,49 @@ const Path = {
            GameMap.occupancy[GameMap.idx(tx, ty)] == null;
   },
 
-  unitFree(tx, ty, self) {
-    const o = GameMap.unitOcc.get(GameMap.idx(tx, ty));
-    return o == null || (self && o === self.id);
-  },
+  // Hex-lattice A*. start/goal are {col,row}. Returns waypoints excluding the
+  // start hex, [] if already there, or null if unreachable. `allowedMicro`
+  // optionally restricts hexes to those whose center lies in a set of micro
+  // tile idx (the macro corridor).
+  aStar(start, goal, self, allowedMicro) {
+    const sIdx = Hex.idx(start.col, start.row);
+    const gIdx = Hex.idx(goal.col, goal.row);
+    if (sIdx === gIdx) return [];
 
-  free(tx, ty, self) {
-    return this.structFree(tx, ty) && this.unitFree(tx, ty, self);
-  },
-
-  // Nearest free tile to (tx,ty), spiraling outward. `taken` is an optional
-  // Set of tile idx already promised to other units in the same order.
-  nearestFreeTile(tx, ty, self, taken) {
-    for (let ring = 0; ring <= 10; ring++) {
-      for (let dx = -ring; dx <= ring; dx++) {
-        for (let dy = -ring; dy <= ring; dy++) {
-          if (Math.max(Math.abs(dx), Math.abs(dy)) !== ring) continue;
-          const x = tx + dx, y = ty + dy;
-          if (!this.free(x, y, self)) continue;
-          if (taken && taken.has(GameMap.idx(x, y))) continue;
-          return { tx: x, ty: y };
-        }
-      }
-    }
-    return null;
-  },
-
-  // Best free tile hugging a structure's footprint (ring 1), preferring the
-  // one closest to (ftx,fty). Expands outward if the whole ring is taken,
-  // which makes crowded workers queue nearby instead of giving up.
-  bestAdjacentTile(s, ftx, fty, self) {
-    for (let ring = 1; ring <= 6; ring++) {
-      const x0 = s.tx - ring, x1 = s.tx + s.w - 1 + ring;
-      const y0 = s.ty - ring, y1 = s.ty + s.h - 1 + ring;
-      let best = null, bd = Infinity;
-      for (let x = x0; x <= x1; x++) {
-        for (let y = y0; y <= y1; y++) {
-          if (x !== x0 && x !== x1 && y !== y0 && y !== y1) continue; // border only
-          if (!this.free(x, y, self)) continue;
-          const ax = Math.abs(x - ftx), ay = Math.abs(y - fty);
-          const d = 10 * Math.max(ax, ay) + 4 * Math.min(ax, ay);
-          if (d < bd) { bd = d; best = { tx: x, ty: y }; }
-        }
-      }
-      if (best) return best;
-    }
-    return null;
-  },
-
-  // Micro-tile A*. Returns waypoints [{tx,ty},...] excluding the start tile,
-  // [] if already there, or null if unreachable. `allowed` optionally
-  // restricts the search to a set of tile idx (the macro corridor).
-  aStar(sx, sy, dx, dy, self, allowed) {
-    const W = GameMap.w;
-    const start = sy * W + sx, goal = dy * W + dx;
-    if (start === goal) return [];
-
-    const h = (x, y) => {
-      const ax = Math.abs(x - dx), ay = Math.abs(y - dy);
-      return 10 * Math.max(ax, ay) + 4 * Math.min(ax, ay);
-    };
     const open = new _MinHeap();
-    const g = new Map([[start, 0]]);
+    const g = new Map([[sIdx, 0]]);
     const came = new Map();
     const closed = new Set();
-    open.push([h(sx, sy), start]);
+    const h = (col, row) => 10 * Hex.dist({ col, row }, goal);
+    open.push([h(start.col, start.row), sIdx, start.col, start.row]);
 
     while (open.size) {
-      const [, cur] = open.pop();
-      if (cur === goal) {
+      const [, cur, ccol, crow] = open.pop();
+      if (cur === gIdx) {
         const out = [];
-        for (let n = goal; n !== start; n = came.get(n)) {
-          out.push({ tx: n % W, ty: (n - (n % W)) / W });
+        for (let n = gIdx; n !== sIdx; n = came.get(n)) {
+          out.push({ col: n % Hex.STRIDE, row: Math.floor(n / Hex.STRIDE) });
         }
         return out.reverse();
       }
       if (closed.has(cur)) continue;
       closed.add(cur);
-      if (closed.size > 5000) return null; // safety valve
+      if (closed.size > 6000) return null; // safety valve
 
-      const cx = cur % W, cy = (cur - cx) / W;
-      for (const [ox, oy, cost] of this.DIRS) {
-        const nx = cx + ox, ny = cy + oy;
-        if (!this.free(nx, ny, self)) continue;
-        const nidx = ny * W + nx;
-        if (allowed && !allowed.has(nidx)) continue;
-        // No cutting corners around blocked tiles on diagonal steps.
-        if (ox && oy && (!this.free(cx + ox, cy, self) || !this.free(cx, cy + oy, self))) continue;
-        const ng = g.get(cur) + cost;
+      for (const [dc, dr] of Hex.neighbors(crow)) {
+        const ncol = ccol + dc, nrow = crow + dr;
+        if (!Hex.free(ncol, nrow, self)) continue;
+        const nidx = Hex.idx(ncol, nrow);
+        if (allowedMicro) {
+          const c = Hex.centerOf(ncol, nrow);
+          const t = GameMap.worldToTile(c.x, c.y);
+          if (!allowedMicro.has(GameMap.idx(t.tx, t.ty))) continue;
+        }
+        const ng = g.get(cur) + 10;
         if (ng < (g.get(nidx) ?? Infinity)) {
           g.set(nidx, ng);
           came.set(nidx, cur);
-          open.push([ng + h(nx, ny), nidx]);
+          open.push([ng + h(ncol, nrow), nidx, ncol, nrow]);
         }
       }
     }
@@ -188,7 +139,7 @@ const Path = {
       if (closed.has(cur)) continue;
       closed.add(cur);
       const cx = cur % W, cy = (cur - cx) / W;
-      for (const [ox, oy, cost] of this.DIRS) {
+      for (const [ox, oy, cost] of this.DIRS8) {
         const nx = cx + ox, ny = cy + oy;
         if (!this.macroFree(nx, ny)) continue;
         const nidx = ny * W + nx;
@@ -223,18 +174,23 @@ const Path = {
     return allowed;
   },
 
-  // Public entry: hierarchical find from tile to tile.
-  find(sx, sy, dx, dy, self) {
-    if (sx === dx && sy === dy) return [];
-    const sm = GameMap.microToMacro(sx, sy);
-    const gm = GameMap.microToMacro(dx, dy);
+  // Public entry: hierarchical find from hex to hex.
+  find(start, goal, self) {
+    if (start.col === goal.col && start.row === goal.row) return [];
+    const sc = Hex.centerOf(start.col, start.row);
+    const gc = Hex.centerOf(goal.col, goal.row);
+    const st = GameMap.worldToTile(sc.x, sc.y);
+    const gt = GameMap.worldToTile(gc.x, gc.y);
+    const sm = GameMap.microToMacro(st.tx, st.ty);
+    const gm = GameMap.microToMacro(gt.tx, gt.ty);
+
     let allowed = null;
     if (sm.mx !== gm.mx || sm.my !== gm.my) {
       const mp = this.macroAStar(sm.mx, sm.my, gm.mx, gm.my);
       if (mp) allowed = this.corridor(mp);
     }
-    let p = this.aStar(sx, sy, dx, dy, self, allowed);
-    if (!p && allowed) p = this.aStar(sx, sy, dx, dy, self, null);
+    let p = this.aStar(start, goal, self, allowed);
+    if (!p && allowed) p = this.aStar(start, goal, self, null);
     return p;
   },
 };

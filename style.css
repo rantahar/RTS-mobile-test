@@ -38,9 +38,9 @@ body {
 
 .btn {
   appearance: none;
-  min-width: 44px;
+  min-width: 40px;
   min-height: 40px;
-  padding: 8px 12px;
+  padding: 8px 9px;
   border: 1px solid #313846;
   border-radius: 8px;
   background: #232936;
@@ -58,11 +58,15 @@ body {
   font-size: 12px;
   color: #8b93a1;
   font-variant-numeric: tabular-nums;
-  min-width: 90px;
+  min-width: 0;
   text-align: right;
+  white-space: nowrap;
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .readout.grow { flex: 1 1 auto; text-align: center; color: #ffd75e; min-width: 0; }
-.readout.ore { color: #e2b04e; font-size: 14px; font-weight: 700; min-width: 0; white-space: nowrap; }
+.readout.ore { color: #e2b04e; font-size: 14px; font-weight: 700; white-space: nowrap; flex: 0 0 auto; overflow: visible; }
 
 /* SVG game viewport fills the remaining space */
 #view {
@@ -79,6 +83,7 @@ body {
 #layer-grid path.micro { stroke: #232a36; stroke-width: 1; fill: none; vector-effect: non-scaling-stroke; }
 #layer-grid path.macro { stroke: #3a4658; stroke-width: 2; fill: none; vector-effect: non-scaling-stroke; }
 #layer-grid rect.mapbg { fill: #161b24; stroke: #2b3342; stroke-width: 2; vector-effect: non-scaling-stroke; }
+#layer-grid path.hexdots { stroke: #4a5a72; stroke-width: 3; stroke-linecap: round; fill: none; }
 
 /* Entities: pure outline + symbol */
 .entity * { vector-effect: non-scaling-stroke; }

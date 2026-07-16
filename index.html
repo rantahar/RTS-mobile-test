@@ -9,11 +9,12 @@
 <body>
   <!-- Top button row -->
   <div id="topbar" class="bar">
-    <button class="btn" id="btn-recenter">Center</button>
+    <button class="btn" id="btn-recenter" aria-label="Center camera">&#9678;</button>
     <button class="btn" id="btn-zoom-in">+</button>
     <button class="btn" id="btn-zoom-out">&minus;</button>
     <div class="spacer"></div>
     <button class="btn" id="btn-macro" aria-pressed="true">Macro</button>
+    <button class="btn" id="btn-hex" aria-pressed="false">Hex</button>
     <div class="readout ore" id="ore">&#9670; 0</div>
     <div class="readout" id="readout">&nbsp;</div>
   </div>
@@ -40,6 +41,7 @@
   <script src="js/config.js"></script>
   <script src="js/camera.js"></script>
   <script src="js/map.js"></script>
+  <script src="js/hex.js"></script>
   <script src="js/path.js"></script>
   <script src="js/entities.js"></script>
   <script src="js/selection.js"></script>

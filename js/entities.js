@@ -36,24 +36,28 @@ const Entities = {
     return e;
   },
 
-  spawnUnit(type, tx, ty) {
-    // Land on the requested tile, or the nearest free one if it's taken.
-    const t = Path.free(tx, ty, null) ? { tx, ty } : Path.nearestFreeTile(tx, ty, null, null);
-    if (!t) return null;
-    const c = GameMap.tileToWorldCenter(t.tx, t.ty);
+  // Spawn a unit on the free hex nearest to a world point.
+  spawnUnit(type, wx, wy) {
+    let h = Hex.fromWorld(wx, wy);
+    if (!h) return null;
+    if (!Hex.free(h.col, h.row, null)) h = Hex.nearestFree(h.col, h.row, null, null);
+    if (!h) return null;
+    const c = Hex.centerOf(h.col, h.row);
+    const t = GameMap.worldToTile(c.x, c.y);
     const e = {
       id: this.nextId++,
       kind: 'unit',
       type,
       x: c.x, y: c.y,
+      hex: h,
+      curHex: Hex.idx(h.col, h.row),
       tx: t.tx, ty: t.ty,
-      curTile: GameMap.idx(t.tx, t.ty),
       r: CONFIG.TILE * 0.42,
       cmd: null,
       path: null,
       el: null,
     };
-    GameMap.unitOcc.set(e.curTile, e.id);
+    GameMap.unitOcc.set(e.curHex, e.id);
     e.el = this.makeEl(e);
     this.layer.appendChild(e.el);
     this.list.push(e);
