@@ -54,7 +54,8 @@ const Entities = {
       tx: t.tx, ty: t.ty,
       r: CONFIG.TILE * 0.42,
       cmd: null,
-      path: null,
+      route: null,
+      resHex: null,
       el: null,
     };
     GameMap.unitOcc.set(e.curHex, e.id);

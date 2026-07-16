@@ -174,7 +174,88 @@ const Path = {
     return allowed;
   },
 
-  // Public entry: hierarchical find from hex to hex.
+  // ---- Route smoothing (string pulling) ----
+
+  // Liang-Barsky: does segment a-b intersect the axis-aligned rect?
+  segRect(a, b, x0, y0, x1, y1) {
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const p = [-dx, dx, -dy, dy];
+    const q = [a.x - x0, x1 - a.x, a.y - y0, y1 - a.y];
+    let t0 = 0, t1 = 1;
+    for (let i = 0; i < 4; i++) {
+      if (p[i] === 0) { if (q[i] < 0) return false; }
+      else {
+        const r = q[i] / p[i];
+        if (p[i] < 0) { if (r > t1) return false; if (r > t0) t0 = r; }
+        else { if (r < t0) return false; if (r < t1) t1 = r; }
+      }
+    }
+    return true;
+  },
+
+  // Squared distance from point (px,py) to segment a-b.
+  segPointDist2(a, b, px, py) {
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const L2 = dx * dx + dy * dy;
+    let t = L2 ? ((px - a.x) * dx + (py - a.y) * dy) / L2 : 0;
+    t = Math.max(0, Math.min(1, t));
+    const qx = a.x + t * dx - px, qy = a.y + t * dy - py;
+    return qx * qx + qy * qy;
+  },
+
+  // Line of sight between two world points: clear of every structure
+  // footprint (expanded by the hex clearance margin) AND of other units'
+  // bodies, so smoothing never collapses an A* detour back through a unit
+  // that is standing on the straight line. Hex neighbors are 1 spacing
+  // apart, so the clearance must stay below that to keep legal steps legal.
+  // (Linear scans are fine while entity counts are small; bucket by macro
+  // tile when they grow.)
+  UNIT_CLEAR2: null, // (0.75 * spacing)^2, set on first use
+
+  los(a, b, self) {
+    const m = Hex.MARGIN, T = CONFIG.TILE;
+    if (this.UNIT_CLEAR2 == null) this.UNIT_CLEAR2 = (Hex.S * 0.75) ** 2;
+    for (const s of Entities.list) {
+      if (s.kind === 'structure') {
+        if (this.segRect(a, b,
+            s.tx * T - m, s.ty * T - m,
+            (s.tx + s.w) * T + m, (s.ty + s.h) * T + m)) return false;
+      } else if (s !== self) {
+        if (this.segPointDist2(a, b, s.x, s.y) < this.UNIT_CLEAR2) return false;
+      }
+    }
+    return true;
+  },
+
+  // Collapse a hex path into straight segments: from each point, jump to the
+  // furthest waypoint with clear line of sight, so units walk straight and
+  // only turn at obstacle corners.
+  smooth(from, hexPath, self) {
+    const pts = hexPath.map(h => Hex.centerOf(h.col, h.row));
+    const out = [];
+    let cur = from, i = 0;
+    while (i < pts.length) {
+      let j = i;
+      for (let k = pts.length - 1; k > i; k--) {
+        if (this.los(cur, pts[k], self)) { j = k; break; }
+      }
+      out.push(pts[j]);
+      cur = pts[j];
+      i = j + 1;
+    }
+    return out;
+  },
+
+  // Plan a smoothed world-point route for a unit to a destination hex.
+  // Returns [{x,y},...], [] if already there, or null if unreachable.
+  route(e, dest) {
+    const hp = this.find(e.hex, dest, e);
+    if (!hp) return null;
+    if (!hp.length) return [];
+    return this.smooth({ x: e.x, y: e.y }, hp, e);
+  },
+
+  // Hierarchical find from hex to hex.
   find(start, goal, self) {
     if (start.col === goal.col && start.row === goal.row) return [];
     const sc = Hex.centerOf(start.col, start.row);
