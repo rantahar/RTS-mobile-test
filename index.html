@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>RTS Mobile Test</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Top button row -->
+  <div id="topbar" class="bar">
+    <button class="btn" id="btn-recenter">Center</button>
+    <button class="btn" id="btn-zoom-in">+</button>
+    <button class="btn" id="btn-zoom-out">&minus;</button>
+    <div class="spacer"></div>
+    <button class="btn" id="btn-macro" aria-pressed="true">Macro</button>
+    <div class="readout" id="readout">&nbsp;</div>
+  </div>
+
+  <!-- Game viewport -->
+  <svg id="view" xmlns="http://www.w3.org/2000/svg">
+    <g id="world">
+      <g id="layer-grid"></g>
+      <g id="layer-entities"></g>
+      <g id="layer-overlay"></g>
+    </g>
+  </svg>
+
+  <!-- Bottom button row -->
+  <div id="bottombar" class="bar">
+    <button class="btn" disabled>Build</button>
+    <button class="btn" disabled>Train</button>
+    <div class="spacer"></div>
+    <button class="btn" disabled>Stop</button>
+  </div>
+
+  <!-- Classic scripts (no build step, works over file://) -->
+  <script src="js/config.js"></script>
+  <script src="js/camera.js"></script>
+  <script src="js/map.js"></script>
+  <script src="js/render.js"></script>
+  <script src="js/input.js"></script>
+  <script src="js/game.js"></script>
+</body>
+</html>
