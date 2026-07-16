@@ -14,7 +14,8 @@ exports.tests = [
     assert(g.Entities.canPlace('barracks', 25, 25), 'open ground rejected');
     assert(!g.Entities.canPlace('barracks', 14, 17), 'overlap with HQ accepted');
     assert(!g.Entities.canPlace('barracks', -1, 5), 'out of bounds accepted');
-    assert(!g.Entities.canPlace('barracks', 40, 40), 'footprint past map edge accepted');
+    assert(!g.Entities.canPlace('barracks', g.CONFIG.MAP_W - 2, g.CONFIG.MAP_H - 2),
+      'footprint past map edge accepted');
     g.Entities.spawnUnit('worker', 26.5 * 32, 26.5 * 32); // inside the candidate footprint
     assert(!g.Entities.canPlace('barracks', 25, 25), 'unit inside footprint ignored');
   }],

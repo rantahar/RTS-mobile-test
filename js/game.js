@@ -81,12 +81,15 @@ const Game = {
     p = tc(23, 23); Entities.spawnUnit('worker', p.x, p.y);
     p = tc(21, 24); Entities.spawnUnit('worker', p.x, p.y);
     // Enemy camp in the far corner; the AI (js/ai.js) runs it.
-    Entities.spawnStructure('barracks', 34, 33, 1);
+    Entities.spawnStructure('barracks', 72, 70, 1);
   },
 
+  // Center on the player's base (falls back to the map middle without one).
   centerCamera() {
     const vw = this.svg.clientWidth, vh = this.svg.clientHeight;
-    Camera.centerOnWorld(CONFIG.MAP_PX_W / 2, CONFIG.MAP_PX_H / 2, vw, vh);
+    const hq = Entities.list.find(e => e.def.depot && e.owner === 0);
+    Camera.centerOnWorld(hq ? hq.x : CONFIG.MAP_PX_W / 2,
+                         hq ? hq.y : CONFIG.MAP_PX_H / 2, vw, vh);
     Camera.apply(this.world);
   },
 

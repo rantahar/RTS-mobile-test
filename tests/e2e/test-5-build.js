@@ -6,6 +6,7 @@ const { launchGame, assert } = require('./helpers');
 exports.run = async () => {
   const g = await launchGame();
   const { page } = g;
+  await g.center(672, 672); // the framing the coordinates below assume
 
   await page.evaluate(() => { Game.ore = 100; Game.updateOre(); });
 

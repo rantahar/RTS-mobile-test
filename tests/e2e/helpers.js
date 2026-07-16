@@ -47,11 +47,19 @@ async function launchGame({ width = 390, height = 844 } = {}) {
     await page.mouse.up();
   };
 
+  // Point the camera at a world position (tests were written against a
+  // fixed framing; the game itself starts centered on the player's HQ).
+  const center = (wx, wy) => page.evaluate(([wx, wy]) => {
+    const v = document.getElementById('view');
+    Camera.centerOnWorld(wx, wy, v.clientWidth, v.clientHeight);
+    Camera.apply(document.getElementById('world'));
+  }, [wx, wy]);
+
   const selInfo = () => page.evaluate(() => document.getElementById('selinfo').textContent);
   const units = () => page.evaluate(() => Entities.list.filter(e => e.kind === 'unit')
     .map(e => ({ x: e.x, y: e.y, hex: e.curHex, type: e.type, cmd: e.cmd && e.cmd.type })));
 
-  return { browser, page, errors, toPage, tapWorld, dragWorld, selInfo, units };
+  return { browser, page, errors, toPage, tapWorld, dragWorld, center, selInfo, units };
 }
 
 function assert(cond, msg) {

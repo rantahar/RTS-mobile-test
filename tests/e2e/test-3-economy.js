@@ -4,6 +4,7 @@ const { launchGame, assert, distinct } = require('./helpers');
 exports.run = async () => {
   const g = await launchGame();
   const { page } = g;
+  await g.center(672, 672); // the framing the coordinates below assume
 
   // Select all workers, send them mining.
   await g.dragWorld(640, 600, 830, 840);
