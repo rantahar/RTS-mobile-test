@@ -86,6 +86,7 @@ body {
 #layer-grid path.micro { stroke: #232a36; stroke-width: 1; fill: none; vector-effect: non-scaling-stroke; }
 #layer-grid path.macro { stroke: #3a4658; stroke-width: 2; fill: none; vector-effect: non-scaling-stroke; }
 #layer-grid rect.mapbg { fill: #161b24; stroke: #2b3342; stroke-width: 2; vector-effect: non-scaling-stroke; }
+#layer-grid path.rock { fill: #2a3140; stroke: #39435634; stroke-width: 1; vector-effect: non-scaling-stroke; }
 #layer-grid path.hexdots { stroke: #4a5a72; stroke-width: 3; stroke-linecap: round; fill: none; }
 
 /* Entities: pure outline + symbol */

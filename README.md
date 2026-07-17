@@ -61,13 +61,20 @@ a fresh index.html with stale cached scripts and crash at startup.
 Model layer (DOM-free, headless-testable):
 
 - `js/config.js` — all tuning constants + the gesture→action map
+- `js/rng.js` — seeded PRNG (mulberry32); deterministic streams for map
+  generation and repeatable tests
 - `js/camera.js` — world/screen transform, zoom, map clamping
-- `js/map.js` — square tile map: structure occupancy, micro→macro (3×3) tiles
+- `js/map.js` — square tile map: structure occupancy, a static
+  passable/impassable **terrain** layer, and micro→macro (3×3) tiles
 - `js/hex.js` — staggered hex lattice for UNIT positions (odd-r offset,
   row spacing √3/2·tile); unit occupancy queries, nearest-free/adjacent search
 - `js/path.js` — two-level pathfinding: coarse macro-tile A* waypoints stored
   on the unit, short hex-grid fine legs, string-pulling (LOS respects
-  structure margins and, locally, occupied/reserved hexes)
+  structure margins, wall terrain, and, locally, occupied/reserved hexes)
+- `js/mapgen.js` — **seeded map generator**: `generate(seed, opts)` returns the
+  neutral world only — `{ terrain, resources, starts }` — with a resource
+  guaranteed near each start and BFS-verified connectivity (corridors carved so
+  a map can never seal a player in). Games place their own entities at `starts`.
 - `js/types.js` — **entity type registry**: each type defines its data
   (footprint/radius/speed/cost/name), its SVG symbol, its per-tick command
   handlers (`commands`), and `orderAt` (what a command tap should do).
@@ -89,25 +96,42 @@ View / UI layer (DOM):
 - `js/actions.js` — named actions the gesture map points at
 - `js/input.js` — pure gesture recognizer (tap/hold/drag1/drag2/wheel)
 - `js/game.js` — composition root: wires hooks, owns the frame loop
-  (Sim.tick → View.sync), HUD, command issuing, training
+  (Sim.tick → View.sync), HUD, command issuing, training. On start it asks
+  `MapGen` for the world, then places the player base + crew at `starts[0]` and
+  the enemy camp at `starts[1]` (that placement is game-specific and stays here).
 
 Cross-layer communication is one-directional: model modules expose hooks
 (`Sim.hooks`, `Entities.hooks`, `Selection.onChange`) that game.js assigns —
 model code never calls the UI.
+
+### Maps
+
+`CONFIG.MAP_SEED` (a number) generates a fresh map — natural rock terrain,
+scattered ore, and spread-out start locations with a guaranteed vein near each.
+Set it to `null` for the legacy hand-placed layout. The seed is overridable
+from the URL: **`?seed=1234`** loads that map (shareable — the same seed always
+reproduces the same map), and **`?seed=none`** forces the legacy layout. The
+generator (`js/mapgen.js`) emits only the neutral world; the game decides what
+to spawn at each start, so it drops into any game built on this engine.
 
 ## Tests
 
 - `node tests/unit/run.js` — headless unit tests (no dependencies; loads the
   model modules in a fresh vm context per test)
 - `node tests/e2e/run.js` — Playwright end-to-end tests (gestures, economy,
-  pathfinding); needs `playwright` installed or preprovisioned
+  pathfinding, combat, and a generated map played over its terrain); needs
+  `playwright` installed or preprovisioned. Behavioral tests pin `?seed=none`
+  (the known open layout); `test-7-mapgen` exercises a generated map.
 - CI runs both: `.github/workflows/tests.yml`
 
 ## Status / roadmap
 
 Working: selection, command taps, group moves with hex-packed arrival,
-two-level pathfinding with string pulling, unit collisions/queueing, mining
-economy, training, worker-built barracks/lab + soldiers, selection-driven
-action bar, combat with range slots + auto-acquire, weapons research, group
-buttons, scripted enemy waves. Next candidates: strategic zoom-out view,
-depleting resource nodes, win/lose detection, more unit and upgrade types.
+two-level pathfinding with string pulling over passable/impassable terrain,
+unit collisions/queueing, mining economy, training, worker-built barracks/lab +
+soldiers, selection-driven action bar, combat with range slots + auto-acquire,
+weapons research, group buttons, scripted enemy waves, and **seeded random maps
+with natural terrain, scattered ore, and spread start locations**. Next
+candidates: strategic zoom-out view, depleting resource nodes, win/lose
+detection, multiple AI competitors (one per generated start), more unit and
+upgrade types.

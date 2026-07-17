@@ -11,12 +11,12 @@ const vm = require('vm');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 // Keep in sync with the <script> order in index.html.
-const FILES = ['config.js', 'camera.js', 'map.js', 'hex.js', 'path.js',
-               'types.js', 'entities.js', 'selection.js', 'sim.js', 'ai.js'];
+const FILES = ['config.js', 'rng.js', 'camera.js', 'map.js', 'hex.js', 'path.js',
+               'mapgen.js', 'types.js', 'entities.js', 'selection.js', 'sim.js', 'ai.js'];
 
 function loadGame() {
   let src = FILES.map(f => fs.readFileSync(path.join(ROOT, 'js', f), 'utf8')).join('\n;\n');
-  src += '\n;__exports({ CONFIG, Camera, GameMap, Hex, Path, Types, Upgrades, Entities, Selection, Sim, AI });';
+  src += '\n;__exports({ CONFIG, RNG, Camera, GameMap, Hex, Path, MapGen, Types, Upgrades, Entities, Selection, Sim, AI });';
   let g = null;
   const ctx = vm.createContext({ __exports: (o) => { g = o; }, console });
   vm.runInContext(src, ctx, { filename: 'game-concat.js' });

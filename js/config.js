@@ -5,6 +5,11 @@ const CONFIG = {
   MAP_W: 84,       // map width  in micro tiles
   MAP_H: 84,       // map height in micro tiles
 
+  // Seeded map generation (js/mapgen.js): a number re-rolls the whole map
+  // (terrain, ore, start spots) deterministically. Set to null for the
+  // legacy hand-placed layout.
+  MAP_SEED: 1337,
+
   MIN_ZOOM: 0.14,  // low enough to see the whole map (strategic view: later)
   MAX_ZOOM: 2.5,
   ZOOM_STEP: 1.25, // multiplier per +/- button press

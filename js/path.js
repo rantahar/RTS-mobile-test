@@ -56,8 +56,7 @@ const Path = {
   LOCAL_R: 6,
 
   structFree(tx, ty) {
-    return GameMap.inBounds(tx, ty) &&
-           GameMap.occupancy[GameMap.idx(tx, ty)] == null;
+    return GameMap.inBounds(tx, ty) && !GameMap.tileBlocked(tx, ty);
   },
 
   // Hex-lattice A*. start/goal are {col,row}. Returns waypoints excluding the
@@ -198,6 +197,9 @@ const Path = {
   los(a, b, self, unitAware) {
     const m = Hex.MARGIN, T = CONFIG.TILE;
     if (this.UNIT_CLEAR2 == null) this.UNIT_CLEAR2 = (Hex.S * 0.75) ** 2;
+    // Static wall terrain: never let smoothing cut a straight line through
+    // rock that the hex A* routed around.
+    if (GameMap.segHitsTerrain(a, b)) return false;
     for (const s of Entities.list) {
       if (s.kind !== 'structure') continue;
       if (this.segRect(a, b,

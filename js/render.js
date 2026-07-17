@@ -17,6 +17,17 @@ const Render = {
     // Background rect for the playable area.
     let svg = `<rect class="mapbg" x="0" y="0" width="${pxW}" height="${pxH}" />`;
 
+    // Impassable natural terrain (rock), filled tile by tile.
+    if (GameMap.hasTerrain) {
+      let rock = '';
+      for (let ty = 0; ty < H; ty++)
+        for (let tx = 0; tx < W; tx++)
+          if (GameMap.terrain[GameMap.idx(tx, ty)]) {
+            rock += `M${tx * T} ${ty * T}h${T}v${T}h${-T}Z`;
+          }
+      svg += `<path class="rock" d="${rock}" />`;
+    }
+
     // Micro grid lines (skip lines that coincide with macro lines when macro on).
     const macro = GameMap.macro;
     let micro = '';

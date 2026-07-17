@@ -13,6 +13,8 @@ const Game = {
     this.world = document.getElementById('world');
     this.overlay = document.getElementById('layer-overlay');
 
+    this.applySeedOverride(); // ?seed=N picks a map, ?seed=none = legacy layout
+
     Hex.init();
     Sim.init();
     AI.init();
@@ -74,6 +76,8 @@ const Game = {
   },
 
   spawnStartLayout() {
+    if (CONFIG.MAP_SEED != null) { this.generateWorld(); return; }
+    // Legacy hand-placed layout (CONFIG.MAP_SEED = null).
     Entities.spawnStructure('hq', 15, 18);
     Entities.spawnStructure('node', 24, 14);
     const tc = (tx, ty) => GameMap.tileToWorldCenter(tx, ty);
@@ -82,6 +86,37 @@ const Game = {
     p = tc(21, 24); Entities.spawnUnit('worker', p.x, p.y);
     // Enemy camp in the far corner; the AI (js/ai.js) runs it.
     Entities.spawnStructure('barracks', 72, 70, 1);
+  },
+
+  // URL override for the map seed: `?seed=1234` re-rolls the map (shareable!),
+  // `?seed=none` (or `?seed=null`) forces the legacy hand-placed layout.
+  applySeedOverride() {
+    let q = null;
+    try { q = new URLSearchParams(location.search).get('seed'); } catch (e) { return; }
+    if (q == null || q === '') return;
+    if (q === 'none' || q === 'null') CONFIG.MAP_SEED = null;
+    else if (!Number.isNaN(Number(q))) CONFIG.MAP_SEED = Number(q);
+  },
+
+  // Seeded map: MapGen makes the neutral world (terrain + ore + start spots);
+  // the game decides what to spawn at each start. Player base + crew at
+  // start 0, the enemy camp at start 1, ore veins at every resource.
+  generateWorld() {
+    const { terrain, resources, starts } =
+      MapGen.generate(CONFIG.MAP_SEED, { starts: 2 });
+    GameMap.setTerrain(terrain);
+    Render.drawGrid();
+    for (const r of resources) Entities.spawnStructure('node', r.tx, r.ty);
+    const [p0, p1] = starts;
+    // Player base (5x5) centered on the start plaza, plus a starting crew.
+    Entities.spawnStructure('hq', p0.tx - 2, p0.ty - 2, 0);
+    const tc = (tx, ty) => GameMap.tileToWorldCenter(tx, ty);
+    for (const [dx, dy] of [[0, 3], [2, 4], [-2, 4]]) {
+      const w = tc(p0.tx + dx, p0.ty + dy);
+      Entities.spawnUnit('worker', w.x, w.y, 0);
+    }
+    // Enemy camp (3x3) at start 1; the AI (js/ai.js) runs it.
+    if (p1) Entities.spawnStructure('barracks', p1.tx - 1, p1.ty - 1, 1);
   },
 
   // Center on the player's base (falls back to the map middle without one).
