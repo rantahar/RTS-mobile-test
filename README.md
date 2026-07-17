@@ -114,6 +114,11 @@ reproduces the same map), and **`?seed=none`** forces the legacy layout. The
 generator (`js/mapgen.js`) emits only the neutral world; the game decides what
 to spawn at each start, so it drops into any game built on this engine.
 
+The **Map** button (top bar) opens a popup that shows the current seed and lets
+you type one, roll a random map ("New map"), or switch to the legacy layout
+("none"). Applying just reloads with the matching `?seed=` — so any map you land
+on is a URL you can share.
+
 ## Tests
 
 - `node tests/unit/run.js` — headless unit tests (no dependencies; loads the
