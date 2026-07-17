@@ -8,7 +8,7 @@ const CONFIG = {
   // Seeded map generation (js/mapgen.js): a number re-rolls the whole map
   // (terrain, ore, start spots) deterministically. Set to null for the
   // legacy hand-placed layout.
-  MAP_SEED: 1337,
+  MAP_SEED: 321,
 
   MIN_ZOOM: 0.14,  // low enough to see the whole map (strategic view: later)
   MAX_ZOOM: 2.5,
