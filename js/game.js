@@ -553,6 +553,52 @@ const Game = {
       this.cancelPlacing();
       Selection.clear();
     });
+
+    this.wireMapMenu();
+  },
+
+  // Map menu: read the current seed, type one, or roll a fresh map. Applying
+  // reloads with ?seed=<value>, which applySeedOverride() reads on init.
+  wireMapMenu() {
+    const menu = document.getElementById('mapmenu');
+    const input = document.getElementById('seed-input');
+    if (!menu || !input) return;
+
+    document.getElementById('btn-map').addEventListener('click', () => this.openMapMenu());
+    document.getElementById('btn-seed-close').addEventListener('click', () => this.closeMapMenu());
+    document.getElementById('btn-seed-apply').addEventListener('click', () => this.applySeed(input.value));
+    document.getElementById('btn-seed-random').addEventListener('click', () =>
+      this.applySeed(Math.floor(Math.random() * 1e9)));
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') this.applySeed(input.value); });
+    // Tapping the dim backdrop (not the panel) closes the menu.
+    menu.addEventListener('click', (e) => { if (e.target === menu) this.closeMapMenu(); });
+  },
+
+  openMapMenu() {
+    const cur = CONFIG.MAP_SEED == null ? 'legacy layout' : CONFIG.MAP_SEED;
+    document.getElementById('seed-current').textContent = `Current: ${cur}`;
+    const input = document.getElementById('seed-input');
+    input.value = CONFIG.MAP_SEED == null ? 'none' : String(CONFIG.MAP_SEED);
+    document.getElementById('mapmenu').classList.remove('hidden');
+    input.focus();
+    input.select();
+  },
+
+  closeMapMenu() {
+    document.getElementById('mapmenu').classList.add('hidden');
+  },
+
+  // Reload the game on a chosen map. A number picks that seed; "none"/"legacy"
+  // loads the hand-placed layout; anything else is ignored.
+  applySeed(raw) {
+    const v = String(raw == null ? '' : raw).trim().toLowerCase();
+    let seed;
+    if (v === 'none' || v === 'null' || v === 'legacy') seed = 'none';
+    else if (v !== '' && Number.isFinite(Number(v))) seed = String(Math.trunc(Number(v)));
+    else return; // invalid input: leave the menu open
+    const url = new URL(location.href);
+    url.search = 'seed=' + seed;
+    location.href = url.toString();
   },
 
   updateReadout() {
