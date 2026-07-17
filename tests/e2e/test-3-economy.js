@@ -4,27 +4,42 @@ const { launchGame, assert, distinct } = require('./helpers');
 exports.run = async () => {
   const g = await launchGame();
   const { page } = g;
-  await g.center(672, 672); // the framing the coordinates below assume
+  const world = await page.evaluate(() => {
+    const h = Entities.list.find(e => e.type === 'hq');
+    // Nearest ore vein to the base, to keep mining trips short.
+    const nodes = Entities.list.filter(e => e.type === 'node');
+    nodes.sort((a, b) => (a.x - h.x) ** 2 + (a.y - h.y) ** 2 - ((b.x - h.x) ** 2 + (b.y - h.y) ** 2));
+    return { hq: { x: h.x, y: h.y }, node: { x: nodes[0].x, y: nodes[0].y } };
+  });
+  await page.evaluate(() => {
+    const v = document.getElementById('view');
+    Camera.setZoom(0.4, v.clientWidth, v.clientHeight);
+  });
+  await g.center(world.hq.x, world.hq.y);
 
   // Select all workers, send them mining.
-  await g.dragWorld(640, 600, 830, 840);
+  let ws = await g.units();
+  let xs = ws.map(u => u.x), ys = ws.map(u => u.y);
+  await g.dragWorld(Math.min(...xs) - 30, Math.min(...ys) - 30,
+                    Math.max(...xs) + 30, Math.max(...ys) + 30);
   assert((await g.selInfo()).includes('×3'), 'box select failed');
-  await g.tapWorld(800, 480); // resource node
-  await page.waitForTimeout(12000);
+  const before = await page.evaluate(() => Game.ore);
+  await g.tapWorld(world.node.x, world.node.y); // resource node
+  await page.waitForTimeout(16000);
 
   const ore = await page.evaluate(() => Game.ore);
-  assert(ore >= 20, `expected >= 20 ore after 12s of mining, got ${ore}`);
+  assert(ore - before >= 10, `expected >= 10 ore mined in 16s, gained ${ore - before}`);
   const miners = await g.units();
   assert(distinct(miners.map(u => u.hex)), 'miners share a hex');
 
-  // Training: the button only exists while an HQ is selected (dynamic bar).
+  // Training: the button only exists while the base is selected (dynamic bar).
   await page.evaluate(() => { Game.ore = 25; Game.updateOre(); });
   await page.click('#btn-deselect');
   assert(await page.evaluate(() => !document.getElementById('btn-train-worker')),
-    'train button shown with no HQ selected');
-  await g.tapWorld(560, 656); // HQ
+    'train button shown with no base selected');
+  await g.tapWorld(world.hq.x, world.hq.y); // base
   assert(!await page.evaluate(() => document.getElementById('btn-train-worker').disabled),
-    'train disabled with HQ selected and ore');
+    'train disabled with base selected and ore');
   await page.click('#btn-train-worker');
   await page.click('#btn-train-worker');
   const after = await page.evaluate(() => ({

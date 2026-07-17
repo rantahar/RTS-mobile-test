@@ -33,7 +33,8 @@ const Entities = {
       y: (ty + h / 2) * T,
       underConstruction,
       progress: 0, // worker-seconds of construction done (sites only)
-      hp: def.hp || null, // null = indestructible (e.g. resource nodes)
+      boarded: 0,  // seats taken (escape rocket only)
+      hp: def.hp || null, // null = indestructible (buildings don't take radiation)
       maxHp: def.hp || null,
     };
     // Mark footprint tiles occupied (pathfinding obstacles).
@@ -81,8 +82,8 @@ const Entities = {
   },
 
   // Spawn the unit a building's type trains, on the best free hex by its
-  // "door" (bottom edge). Payment is the caller's business (Game for the
-  // player, AI for the enemy). Returns the unit, or null if walled in.
+  // "door" (bottom edge). Payment is the caller's business (Game). Returns
+  // the unit, or null if walled in.
   trainAt(b) {
     const hc = Hex.fromWorld(b.x, b.y + (b.h / 2) * CONFIG.TILE);
     const h = hc && Hex.bestAdjacent(b, hc.col, hc.row, null);
@@ -110,7 +111,7 @@ const Entities = {
     return true;
   },
 
-  // Remove a unit from the game (future: combat deaths).
+  // Remove a unit from the game (boarding a rocket, or burning up in the nova).
   removeUnit(e) {
     for (const [idx, id] of GameMap.unitOcc) {
       if (id === e.id) GameMap.unitOcc.delete(idx);
@@ -155,8 +156,8 @@ const Entities = {
     return null;
   },
 
-  // Box select: the player's units win, then structures, then enemy units
-  // (info only — commands are filtered to owner 0 in Game).
+  // Box select: the player's units win, then structures, then any other
+  // units (info only — commands are filtered to owner 0 in Game).
   inRect(ax, ay, bx, by) {
     const x0 = Math.min(ax, bx), x1 = Math.max(ax, bx);
     const y0 = Math.min(ay, by), y1 = Math.max(ay, by);

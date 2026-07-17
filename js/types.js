@@ -7,18 +7,6 @@
 // Command handlers get (e, cmd, dt) and drive the unit via Sim's movement
 // primitives (travel/approachRect/stopUnit/blockedWait).
 
-// Upgrade registry: researched at buildings whose type lists them in
-// def.upgrades. Levels are stored per owner in Sim.upgrades.
-const Upgrades = {
-  weapons: {
-    name: 'Weapons',
-    maxLevel: 3,
-    bonus: CONFIG.WEAPON_BONUS, // +damage per level (Sim.attackDamage)
-    time: CONFIG.WEAPON_TIME,   // research seconds per level
-    cost(level) { return CONFIG.WEAPON_COST_BASE + CONFIG.WEAPON_COST_STEP * level; },
-  },
-};
-
 // Movement commands shared by every mobile unit.
 const UnitCommands = {
   // { type:'move', col, row } — walk to a hex (or the nearest free one).
@@ -44,9 +32,8 @@ const UnitCommands = {
 const Types = {
   hq: {
     kind: 'structure',
-    name: 'Main Building',
+    name: 'Command Center',
     w: 5, h: 5,
-    hp: CONFIG.HQ_HP,
     depot: true,      // carried ore is deposited here
     trains: 'worker', // Train button spawns this unit type
     svg(e) {
@@ -62,29 +49,48 @@ const Types = {
     },
   },
 
-  barracks: {
+  rocket: {
     kind: 'structure',
-    name: 'Barracks',
+    name: 'Escape Rocket',
     w: 3, h: 3,
-    hp: CONFIG.BARRACKS_HP,
-    trains: 'soldier',
-    cost: CONFIG.BARRACKS_COST,   // ore to place the construction site
-    buildTime: CONFIG.BARRACKS_BUILD, // worker-seconds to finish it
+    boards: true,                    // workers can board it to be saved
+    capacity: CONFIG.ROCKET_CAPACITY,
+    cost: CONFIG.ROCKET_COST,        // ore to place the construction site
+    buildTime: CONFIG.ROCKET_BUILD,  // worker-seconds to finish it
     svg(e) {
       const T = CONFIG.TILE;
       const h = (e.w * T) / 2;
-      const i = h - 5;
       return `
         <rect class="selmark" x="${-h - 4}" y="${-h - 4}" width="${2 * h + 8}" height="${2 * h + 8}" rx="6"/>
-        <rect class="shape" x="${-i}" y="${-i}" width="${2 * i}" height="${2 * i}" rx="8"/>
-        <path class="detail" d="M${-i + 8} 16 L0 ${-i + 10} L${i - 8} 16"/>
-        <path class="detail" d="M-9 ${i - 6} L-9 12 A9 9 0 0 1 9 12 L9 ${i - 6}"/>`;
+        <path class="shape" d="M0 -38 Q14 -20 14 6 L14 22 L-14 22 L-14 6 Q-14 -20 0 -38 Z"/>
+        <path class="detail" d="M-14 10 L-26 30 L-14 22 Z"/>
+        <path class="detail" d="M14 10 L26 30 L14 22 Z"/>
+        <circle class="detail" cx="0" cy="-8" r="5"/>
+        <path class="flame" d="M-7 22 L0 40 L7 22 Z"/>`;
+    },
+  },
+
+  shield: {
+    kind: 'structure',
+    name: 'Radiation Shield',
+    w: 2, h: 2,
+    shieldRadius: CONFIG.SHIELD_RADIUS_PX, // protection radius in world px
+    cost: CONFIG.SHIELD_COST,
+    buildTime: CONFIG.SHIELD_BUILD,
+    svg(e) {
+      const T = CONFIG.TILE;
+      const h = (e.w * T) / 2;
+      return `
+        <circle class="aura" r="${CONFIG.SHIELD_RADIUS_PX}"/>
+        <rect class="selmark" x="${-h - 4}" y="${-h - 4}" width="${2 * h + 8}" height="${2 * h + 8}" rx="6"/>
+        <path class="shape" d="M0 -24 L20 -12 V6 Q20 22 0 28 Q-20 22 -20 6 V-12 Z"/>
+        <path class="detail" d="M0 -14 V18 M-12 2 H12"/>`;
     },
   },
 
   node: {
     kind: 'structure',
-    name: 'Resource',
+    name: 'Ore Vein',
     w: 2, h: 2,
     neutral: true,   // belongs to no player
     mineable: true,
@@ -106,7 +112,7 @@ const Types = {
     speed: CONFIG.WORKER_SPEED, // world px per second
     cost: CONFIG.WORKER_COST,
     hp: CONFIG.WORKER_HP,
-    builds: ['barracks', 'lab'], // structures this unit can construct
+    builds: ['rocket', 'shield'], // structures this unit can construct
     svg(e) {
       const r = e.r;
       return `
@@ -122,6 +128,10 @@ const Types = {
     orderAt(u, hit) {
       if (hit.kind === 'structure' && hit.underConstruction && hit.owner === u.owner) {
         return { type: 'build', siteId: hit.id }; // resume/help construction
+      }
+      if (hit.def.boards && hit.owner === u.owner && !hit.underConstruction &&
+          (hit.boarded || 0) < hit.def.capacity) {
+        return { type: 'board', rocketId: hit.id }; // evacuate: go get saved
       }
       if (hit.def.mineable) {
         const depot = Entities.list.find(s => s.def.depot && s.owner === u.owner);
@@ -172,122 +182,17 @@ const Types = {
           if (s.progress >= s.def.buildTime) Sim.completeStructure(s);
         }
       },
-    },
-  },
 
-  soldier: {
-    kind: 'unit',
-    name: 'Soldier',
-    radius: 0.42,
-    speed: CONFIG.SOLDIER_SPEED,
-    cost: CONFIG.SOLDIER_COST,
-    hp: CONFIG.SOLDIER_HP,
-    damage: CONFIG.SOLDIER_DMG,
-    rate: CONFIG.SOLDIER_RATE,   // seconds between swings
-    range: CONFIG.SOLDIER_RANGE, // hex spacings
-    aggro: CONFIG.SOLDIER_AGGRO, // auto-acquire radius, hex spacings
-    svg(e) {
-      const r = e.r;
-      return `
-        <circle class="selmark" r="${r + 4}"/>
-        <circle class="shape" r="${r}"/>
-        <path class="detail" d="M-6.5 7.5 L6.5 -6.5"/>
-        <path class="detail" d="M-5.5 1.5 L0.5 7.5"/>
-        <circle class="detail" cx="-7.5" cy="8.5" r="1.6"/>`;
-    },
-
-    orderAt(u, hit) {
-      if (hit.hp != null && hit.owner != null && hit.owner !== u.owner) {
-        return { type: 'attack', targetId: hit.id };
-      }
-      if (hit.kind === 'structure') return { type: 'moveRect', targetId: hit.id };
-      return null;
-    },
-
-    // Idle soldiers look around and engage hostiles on their own.
-    idle(e, dt) {
-      e.scanT = (e.scanT || 0) - dt;
-      if (e.scanT > 0) return;
-      e.scanT = 0.3;
-      const t = Sim.findTarget(e);
-      if (t) e.cmd = { type: 'attack', targetId: t.id, auto: true };
-    },
-
-    commands: {
-      ...UnitCommands,
-
-      // { type:'attack', targetId, auto } — walk to a free range slot around
-      // the target (Hex.attackSlot), hold it, and swing on cooldown. Units
-      // behind path around attackers already standing at range. auto: the
-      // command was self-acquired; it retargets when the target dies or
-      // something closer wanders into aggro range.
-      attack(e, c, dt) {
-        let t = Entities.byId.get(c.targetId);
-        if (!t || t.hp == null) {
-          const nt = c.auto && Sim.findTarget(e);
-          if (!nt) { Sim.stopUnit(e); return; }
-          c.targetId = nt.id;
-          Sim.clearPath(e);
-          t = nt;
+      // { type:'board', rocketId } — walk to the rocket and take a seat. A
+      // boarded worker is saved and leaves the map (Sim.boardRocket). A full
+      // rocket, or one still under construction, stops the worker instead.
+      board(e, c, dt) {
+        const r = Entities.byId.get(c.rocketId);
+        if (!r || r.underConstruction || (r.boarded || 0) >= r.def.capacity) {
+          Sim.stopUnit(e); return;
         }
-        const range = e.def.range * Hex.S;
-        const d = Sim.distTo(e, t);
-        c.cd = Math.max(0, (c.cd || 0) - dt);
-        if (d <= range + 0.5) {
-          if (e.coarse || e.route) Sim.clearPath(e); // in range: hold the slot
-          if (c.cd === 0) {
-            c.cd = e.def.rate;
-            Sim.damage(t, Sim.attackDamage(e), e);
-          }
-          return;
-        }
-        // Approaching. Auto attackers keep glancing for closer prey.
-        if (c.auto) {
-          c.scan = (c.scan || 0) - dt;
-          if (c.scan <= 0) {
-            c.scan = 0.4;
-            const nt = Sim.findTarget(e);
-            if (nt && nt.id !== c.targetId && Sim.distTo(e, nt) < d) {
-              c.targetId = nt.id;
-              Sim.clearPath(e);
-              return;
-            }
-          }
-        }
-        // Replan when the target has moved well away from the planned slot.
-        if (e.coarse && c.gx != null &&
-            Math.hypot(t.x - c.gx, t.y - c.gy) > Hex.S * 1.5) Sim.clearPath(e);
-        if (!e.coarse || !e.coarse.length) {
-          const slot = Hex.attackSlot(t, e, range);
-          if (!slot) { Sim.blockedWait(e, c, dt); return; } // ring full: queue
-          c.gx = t.x; c.gy = t.y;
-          e.coarse = Path.coarse(e, slot);
-        }
-        if (Sim.travel(e, c, dt) === 'blocked') Sim.blockedWait(e, c, dt);
-        // 'arrived' while still out of range (slot stolen / target moved):
-        // coarse is empty now, so next tick picks a fresh slot.
+        if (Sim.approachRect(e, c, r, dt)) Sim.boardRocket(e, r);
       },
-    },
-  },
-
-  lab: {
-    kind: 'structure',
-    name: 'Lab',
-    w: 3, h: 3,
-    hp: CONFIG.LAB_HP,
-    cost: CONFIG.LAB_COST,
-    buildTime: CONFIG.LAB_BUILD,
-    upgrades: ['weapons'], // research buttons offered when selected
-    svg(e) {
-      const T = CONFIG.TILE;
-      const h = (e.w * T) / 2;
-      const i = h - 5;
-      return `
-        <rect class="selmark" x="${-h - 4}" y="${-h - 4}" width="${2 * h + 8}" height="${2 * h + 8}" rx="6"/>
-        <rect class="shape" x="${-i}" y="${-i}" width="${2 * i}" height="${2 * i}" rx="8"/>
-        <path class="detail" d="M-6 ${-i + 10} H6 M-4 ${-i + 10} V-4 L-16 18 H16 L4 -4 V${-i + 10}"/>
-        <circle class="detail" cx="-3" cy="10" r="2"/>
-        <circle class="detail" cx="5" cy="4" r="1.5"/>`;
     },
   },
 };

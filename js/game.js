@@ -1,10 +1,15 @@
-// Entry point: wires everything together, owns the HUD and command issuing.
+// Entry point: wires everything together, owns the HUD, the nova clock, and
+// command issuing.
 const Game = {
   svg: null,
   world: null,
   overlay: null,
   boxEl: null,
   ore: 0,
+  timeLeft: CONFIG.NOVA_TIME, // seconds until the nova ignites
+  saved: 0,                   // workers boarded onto a rocket (the score)
+  produced: 0,                // workers ever made (starting crew + trained)
+  ended: false,               // frozen on the results screen
   placing: null, // structure type being placed (build button armed), or null
   groups: { g1: new Set(), g2: new Set(), g3: new Set() }, // assignable ids
 
@@ -15,7 +20,6 @@ const Game = {
 
     Hex.init();
     Sim.init();
-    AI.init();
     Render.init();
     View.init();
     Input.init(this.svg, this.world);
@@ -29,15 +33,22 @@ const Game = {
     Sim.hooks.deposit = (n) => this.addOre(n);
     Sim.hooks.completed = (s) => {
       this.pulse(s.x, s.y, 'goto');
-      this.updateSelInfo(); // a selected site may now offer training
+      this.updateSelInfo(); // a selected site may now offer training/boarding
     };
-    Sim.hooks.attack = (a, t) => this.tracer(a, t);
-    Sim.hooks.destroyed = (e) => this.pulse(e.x, e.y, 'attack');
-    Sim.hooks.researched = (b, key) => {
-      this.pulse(b.x, b.y, 'goto');
-      this.updateSelInfo(); // refresh the upgrade button's level/cost
+    Sim.hooks.boarded = (u, r) => {
+      this.saved++;
+      this.updateScore();
+      this.pulse(r.x, r.y, 'save');
+      this.updateSelInfo(); // refresh the rocket's seat count
     };
+    Sim.hooks.novaKilled = (u) => this.pulse(u.x, u.y, 'nova');
     Selection.onChange = () => this.updateSelInfo();
+
+    this.ore = CONFIG.START_ORE;
+    this.timeLeft = CONFIG.NOVA_TIME;
+    this.saved = 0;
+    this.produced = 0;
+    this.ended = false;
 
     this.spawnStartLayout();
 
@@ -46,7 +57,8 @@ const Game = {
 
     this.wireButtons();
     this.wireGroupBar();
-    this.updateReadout();
+    this.updateNova();
+    this.updateScore();
     this.updateSelInfo();
     this.updateOre();
 
@@ -58,33 +70,71 @@ const Game = {
     });
   },
 
-  // Frame loop: step the simulation, then mirror model state into the SVG.
+  // Frame loop: tick the clock, step the simulation, mirror model into SVG.
   startLoop() {
     let last = null;
     const frame = (ts) => {
       if (last == null) last = ts;
       const dt = Math.min((ts - last) / 1000, 0.05); // clamp tab-sleep jumps
       last = ts;
-      Sim.tick(dt);
-      AI.tick(dt);
-      View.sync();
+      if (!this.ended) {
+        this.stepClock(dt);
+        Sim.tick(dt);
+        View.sync();
+        this.checkEnd();
+      }
       requestAnimationFrame(frame);
     };
     requestAnimationFrame(frame);
   },
 
-  spawnStartLayout() {
-    Entities.spawnStructure('hq', 15, 18);
-    Entities.spawnStructure('node', 24, 14);
-    const tc = (tx, ty) => GameMap.tileToWorldCenter(tx, ty);
-    let p = tc(22, 21); Entities.spawnUnit('worker', p.x, p.y);
-    p = tc(23, 23); Entities.spawnUnit('worker', p.x, p.y);
-    p = tc(21, 24); Entities.spawnUnit('worker', p.x, p.y);
-    // Enemy camp in the far corner; the AI (js/ai.js) runs it.
-    Entities.spawnStructure('barracks', 72, 70, 1);
+  // Count down to the nova; once it ignites, the radiation field (Sim) burns
+  // and ramps on its own.
+  stepClock(dt) {
+    if (!Sim.nova.active) {
+      this.timeLeft -= dt;
+      if (this.timeLeft <= 0) {
+        this.timeLeft = 0;
+        Sim.startNova();
+        document.body.classList.add('nova');
+      }
+    }
+    this.updateNova();
   },
 
-  // Center on the player's base (falls back to the map middle without one).
+  // The game ends once the nova has ignited and no worker is left alive —
+  // everyone is either aboard a rocket (saved) or lost to the radiation.
+  checkEnd() {
+    if (this.ended || !Sim.nova.active) return;
+    const alive = Entities.list.some(e => e.kind === 'unit' && e.owner === 0);
+    if (!alive) this.showEnd();
+  },
+
+  showEnd() {
+    this.ended = true;
+    const es = document.getElementById('endscreen');
+    if (!es) return;
+    document.getElementById('end-saved').textContent = this.saved;
+    document.getElementById('end-produced').textContent =
+      `${this.saved} of ${this.produced} workers escaped the nova`;
+    es.classList.remove('hidden');
+  },
+
+  spawnStartLayout() {
+    // The mining outpost, centered on the asteroid.
+    Entities.spawnStructure('hq', 18, 18);
+    // Ore veins scattered toward the rim.
+    for (const [tx, ty] of [[9, 9], [31, 9], [9, 31], [31, 31], [20, 6], [6, 22]]) {
+      Entities.spawnStructure('node', tx, ty);
+    }
+    const tc = (tx, ty) => GameMap.tileToWorldCenter(tx, ty);
+    for (const [tx, ty] of [[24, 22], [25, 24], [23, 25]]) {
+      const p = tc(tx, ty);
+      if (Entities.spawnUnit('worker', p.x, p.y)) this.produced++;
+    }
+  },
+
+  // Center on the command center (falls back to the map middle without one).
   centerCamera() {
     const vw = this.svg.clientWidth, vh = this.svg.clientHeight;
     const hq = Entities.list.find(e => e.def.depot && e.owner === 0);
@@ -130,9 +180,8 @@ const Game = {
       }
       if (movers.length) this.moveGroup(movers, hit.x, hit.y);
       if (commanded || movers.length) {
-        const hostile = hit.owner != null && hit.owner !== 0;
         this.pulse(hit.x, hit.y,
-          hit.def.mineable ? 'mine' : hostile ? 'attack' : 'goto');
+          hit.def.mineable ? 'mine' : hit.def.boards ? 'save' : 'goto');
       }
       return;
     }
@@ -168,17 +217,8 @@ const Game = {
     const u = Entities.trainAt(b);
     if (!u) return; // completely walled in
     this.addOre(-def.cost);
+    this.produced++;
     this.pulse(u.x, u.y, 'goto');
-  },
-
-  // Start researching an upgrade at a building (pay up front).
-  research(b, key) {
-    const up = Upgrades[key];
-    const cost = up.cost(Sim.upgradeLevel(0, key));
-    if (this.ore < cost) return;
-    if (!Sim.startResearch(b, key)) return;
-    this.addOre(-cost);
-    this.updateSelInfo(); // button flips to "researching"
   },
 
   // ---- Building placement ----
@@ -270,28 +310,6 @@ const Game = {
       });
     }
 
-    // Upgrade buttons: one per upgrade key, on the first selected building
-    // offering it. Label carries level/cost so the bar rebuilds on changes.
-    const seen = new Set();
-    for (const b of sel) {
-      if (b.kind !== 'structure' || !b.def.upgrades || b.underConstruction) continue;
-      for (const key of b.def.upgrades) {
-        if (seen.has(key)) continue;
-        seen.add(key);
-        const up = Upgrades[key];
-        const lvl = Sim.upgradeLevel(0, key);
-        const done = lvl >= up.maxLevel;
-        btns.push({
-          id: `btn-up-${key}`,
-          label: done ? `${up.name} MAX`
-               : b.research ? `${up.name}…`
-               : `${up.name} L${lvl + 1} ◆${up.cost(lvl)}`,
-          disabled: done || !!b.research || this.ore < up.cost(lvl),
-          onTap: () => this.research(b, key),
-        });
-      }
-    }
-
     if (units.length) {
       btns.push({
         id: 'btn-stop',
@@ -331,16 +349,6 @@ const Game = {
     });
   },
 
-  // Brief attack flash from attacker to target.
-  tracer(a, t) {
-    const l = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    l.setAttribute('class', 'tracer');
-    l.setAttribute('x1', a.x); l.setAttribute('y1', a.y);
-    l.setAttribute('x2', t.x); l.setAttribute('y2', t.y);
-    this.overlay.appendChild(l);
-    setTimeout(() => l.remove(), 110);
-  },
-
   // Brief expanding-ring feedback at a command target.
   pulse(x, y, kind) {
     const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -361,16 +369,12 @@ const Game = {
     switch (key) {
       case 'mains':
         return own.filter(e => e.def.depot);
-      case 'production':
-        return own.filter(e => e.kind === 'structure' && e.def.trains &&
-          !e.def.depot && !e.underConstruction);
-      case 'upgrades':
-        return own.filter(e => e.kind === 'structure' && e.def.upgrades &&
-          !e.underConstruction);
       case 'idle': // workers with nothing to do
-        return own.filter(e => e.kind === 'unit' && !e.def.damage && !e.cmd);
-      case 'army':
-        return own.filter(e => e.kind === 'unit' && e.def.damage);
+        return own.filter(e => e.kind === 'unit' && !e.cmd);
+      case 'rockets':
+        return own.filter(e => e.def.boards && !e.underConstruction);
+      case 'shields':
+        return own.filter(e => e.def.shieldRadius != null && !e.underConstruction);
       default:
         return [...this.groups[key]]
           .map(id => Entities.byId.get(id)).filter(Boolean);
@@ -459,6 +463,26 @@ const Game = {
     this.updateActionBar();
   },
 
+  // Nova countdown (mm:ss), then a NOVA banner once it ignites.
+  updateNova() {
+    const el = document.getElementById('nova');
+    if (!el) return;
+    if (Sim.nova.active) {
+      el.textContent = '☢ NOVA';
+      el.classList.add('nova-on');
+    } else {
+      const t = Math.max(0, Math.ceil(this.timeLeft));
+      const m = Math.floor(t / 60), s = t % 60;
+      el.textContent = `☢ ${m}:${String(s).padStart(2, '0')}`;
+      el.classList.toggle('warn', this.timeLeft <= 60);
+    }
+  },
+
+  updateScore() {
+    const el = document.getElementById('score');
+    if (el) el.textContent = `★ ${this.saved}`;
+  },
+
   updateSelInfo() {
     // Disarm placement if the selection can no longer build the armed type.
     if (this.placing) {
@@ -477,7 +501,10 @@ const Game = {
     if (!es.length) { el.textContent = ''; return; }
     const counts = {};
     for (const e of es) {
-      const name = e.def.name + (e.underConstruction ? ' (site)' : '');
+      let name = e.def.name + (e.underConstruction ? ' (site)' : '');
+      if (e.def.boards && !e.underConstruction) {
+        name = `${e.def.name} ${e.boarded || 0}/${e.def.capacity}`;
+      }
       counts[name] = (counts[name] || 0) + 1;
     }
     el.textContent = Object.entries(counts)
@@ -518,8 +545,11 @@ const Game = {
       this.cancelPlacing();
       Selection.clear();
     });
+    const restart = document.getElementById('btn-restart');
+    if (restart) restart.addEventListener('click', () => location.reload());
   },
 
+  // Debug readout (zoom/camera). Present only if the element exists.
   updateReadout() {
     const el = document.getElementById('readout');
     if (!el) return;

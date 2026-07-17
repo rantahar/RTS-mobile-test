@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <title>RTS Mobile Test</title>
-  <link rel="stylesheet" href="style.css?v=4" />
+  <title>Nova Miner</title>
+  <link rel="stylesheet" href="style.css?v=1" />
 </head>
 <body>
   <!-- Top button row -->
@@ -15,18 +15,17 @@
     <div class="spacer"></div>
     <button class="btn" id="btn-macro" aria-pressed="true">Macro</button>
     <button class="btn" id="btn-hex" aria-pressed="false">Hex</button>
+    <div class="readout nova" id="nova">&#9762; 5:00</div>
     <div class="readout ore" id="ore">&#9670; 0</div>
-    <div class="readout" id="readout">&nbsp;</div>
   </div>
 
   <!-- Group buttons: tap to select, tap again to center the camera.
        1/2/3 are assignable: press-and-hold saves the current selection. -->
   <div id="groupbar" class="bar">
-    <button class="btn sm" data-group="mains">HQ</button>
-    <button class="btn sm" data-group="production">Prod</button>
-    <button class="btn sm" data-group="upgrades">Lab</button>
+    <button class="btn sm" data-group="mains">Base</button>
     <button class="btn sm" data-group="idle">Idle</button>
-    <button class="btn sm" data-group="army">Army</button>
+    <button class="btn sm" data-group="rockets">Rocket</button>
+    <button class="btn sm" data-group="shields">Shield</button>
     <button class="btn sm" data-group="g1">1</button>
     <button class="btn sm" data-group="g2">2</button>
     <button class="btn sm" data-group="g3">3</button>
@@ -46,7 +45,19 @@
   <div id="bottombar" class="bar">
     <div id="actions" class="actions"></div>
     <div class="readout grow" id="selinfo"></div>
+    <div class="readout score" id="score">&#9733; 0</div>
     <button class="btn" id="btn-deselect">&#10005;</button>
+  </div>
+
+  <!-- Results screen: shown when the nova has run its course. -->
+  <div id="endscreen" class="overlay hidden">
+    <div class="panel">
+      <div class="title">&#9732; NOVA</div>
+      <div class="big" id="end-saved">0</div>
+      <div class="sub">workers saved</div>
+      <div class="stat" id="end-produced"></div>
+      <button class="btn" id="btn-restart">Play again</button>
+    </div>
   </div>
 
   <!-- Classic scripts (no build step, works over file://).
@@ -57,20 +68,19 @@
        ?v=N is a cache buster: BUMP IT (all lines, same number) whenever any
        js/css file changes, or phones mix stale cached scripts with a fresh
        index.html and the game breaks at startup. -->
-  <script src="js/config.js?v=4"></script>
-  <script src="js/camera.js?v=4"></script>
-  <script src="js/map.js?v=4"></script>
-  <script src="js/hex.js?v=4"></script>
-  <script src="js/path.js?v=4"></script>
-  <script src="js/types.js?v=4"></script>
-  <script src="js/entities.js?v=4"></script>
-  <script src="js/selection.js?v=4"></script>
-  <script src="js/sim.js?v=4"></script>
-  <script src="js/ai.js?v=4"></script>
-  <script src="js/render.js?v=4"></script>
-  <script src="js/view.js?v=4"></script>
-  <script src="js/actions.js?v=4"></script>
-  <script src="js/input.js?v=4"></script>
-  <script src="js/game.js?v=4"></script>
+  <script src="js/config.js?v=1"></script>
+  <script src="js/camera.js?v=1"></script>
+  <script src="js/map.js?v=1"></script>
+  <script src="js/hex.js?v=1"></script>
+  <script src="js/path.js?v=1"></script>
+  <script src="js/types.js?v=1"></script>
+  <script src="js/entities.js?v=1"></script>
+  <script src="js/selection.js?v=1"></script>
+  <script src="js/sim.js?v=1"></script>
+  <script src="js/render.js?v=1"></script>
+  <script src="js/view.js?v=1"></script>
+  <script src="js/actions.js?v=1"></script>
+  <script src="js/input.js?v=1"></script>
+  <script src="js/game.js?v=1"></script>
 </body>
 </html>

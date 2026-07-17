@@ -70,6 +70,13 @@ body {
 }
 .readout.grow { flex: 1 1 auto; text-align: center; color: #ffd75e; min-width: 0; }
 .readout.ore { color: #e2b04e; font-size: 14px; font-weight: 700; white-space: nowrap; flex: 0 0 auto; overflow: visible; }
+.readout.score { color: #7ddc8a; font-size: 14px; font-weight: 700; flex: 0 0 auto; overflow: visible; }
+
+/* Nova countdown: calm, then a warning amber, then a red banner once lit */
+.readout.nova { color: #7fd6c8; font-size: 14px; font-weight: 700; flex: 0 0 auto; overflow: visible; }
+.readout.nova.warn { color: #ffb454; }
+.readout.nova.nova-on { color: #ff5f52; animation: novaPulse 0.8s ease-in-out infinite; }
+@keyframes novaPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 
 /* SVG game viewport fills the remaining space */
 #view {
@@ -81,6 +88,8 @@ body {
   touch-action: none;         /* we handle all gestures ourselves */
   cursor: default;
 }
+/* Once the nova ignites, the field takes on a hot cast. */
+body.nova #view { background: #1c1113; }
 
 /* World layers */
 #layer-grid path.micro { stroke: #232a36; stroke-width: 1; fill: none; vector-effect: non-scaling-stroke; }
@@ -106,33 +115,33 @@ body {
 .entity.worker .shape, .entity.worker .detail { stroke: #6fd3ff; }
 .entity.worker .shape { fill: rgba(111, 211, 255, 0.08); }
 
-.entity.barracks .shape, .entity.barracks .detail { stroke: #9d8cff; }
-.entity.barracks .shape { fill: rgba(157, 140, 255, 0.06); }
+/* Escape rocket */
+.entity.rocket .shape, .entity.rocket .detail { stroke: #ffcf6f; }
+.entity.rocket .shape { fill: rgba(255, 207, 111, 0.08); }
+.entity.rocket .flame { fill: #ff8a5c; stroke: none; }
 
-.entity.soldier .shape, .entity.soldier .detail { stroke: #ff9d7a; }
-.entity.soldier .shape { fill: rgba(255, 157, 122, 0.08); }
-
-.entity.lab .shape, .entity.lab .detail { stroke: #6fe0c8; }
-.entity.lab .shape { fill: rgba(111, 224, 200, 0.06); }
-
-/* Enemy (owner 1): red, overrides the type colors above */
-.entity.p1 .shape, .entity.p1 .detail { stroke: #e25f5f; }
-.entity.p1 .shape { fill: rgba(226, 95, 95, 0.08); }
-.entity.p1 .flag { fill: #e25f5f; }
+/* Radiation shield + its protective aura (the zone that cuts nova damage) */
+.entity.shield .shape, .entity.shield .detail { stroke: #8fb8ff; }
+.entity.shield .shape { fill: rgba(143, 184, 255, 0.10); }
+.entity.shield .aura {
+  fill: rgba(143, 184, 255, 0.05);
+  stroke: rgba(143, 184, 255, 0.35);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 5;
+}
+.entity.shield.unbuilt .aura { display: none; }
+body.nova .entity.shield .aura { fill: rgba(143, 184, 255, 0.10); stroke: rgba(143, 184, 255, 0.6); }
 
 /* Construction sites: dashed outline until built, progress bar above */
 .entity.unbuilt .shape, .entity.unbuilt .detail { stroke-dasharray: 6 5; opacity: 0.75; }
 .sitebar .pbg { fill: #232a36; stroke: #3a4658; stroke-width: 1; }
 .sitebar .pfill { fill: #5fc8a8; stroke: none; }
 
-/* HP bars: only shown once damaged */
+/* HP bars: only shown once damaged (radiation eating a worker) */
 .hpbar { display: none; }
 .entity.damaged .hpbar { display: block; }
 .hpbar .bg { fill: #232a36; stroke: #3a4658; stroke-width: 1; }
-.hpbar .fill { fill: #7ddc8a; stroke: none; }
-
-/* Attack flash */
-.tracer { stroke: #ffd0a0; stroke-width: 2; opacity: 0.9; vector-effect: non-scaling-stroke; }
+.hpbar .fill { fill: #ff7a5c; stroke: none; }
 
 /* Selection highlight */
 .entity .selmark {
@@ -153,7 +162,8 @@ body {
 .pulse.move { stroke: #5fc8a8; }
 .pulse.mine { stroke: #e2b04e; }
 .pulse.goto { stroke: #6fd3ff; }
-.pulse.attack { stroke: #e25f5f; }
+.pulse.save { stroke: #ffcf6f; }
+.pulse.nova { stroke: #ff5f52; }
 
 /* Placement attempt feedback */
 .place-flash rect { fill: none; stroke-width: 2; stroke-dasharray: 6 4; vector-effect: non-scaling-stroke; }
@@ -172,3 +182,29 @@ body {
   stroke-dasharray: 5 4;
   vector-effect: non-scaling-stroke;
 }
+
+/* Results overlay */
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 8, 10, 0.78);
+  backdrop-filter: blur(2px);
+}
+.overlay.hidden { display: none; }
+.overlay .panel {
+  text-align: center;
+  padding: 28px 34px;
+  border: 1px solid #3a2b2b;
+  border-radius: 16px;
+  background: #1a1418;
+  max-width: 82%;
+}
+.overlay .title { font-size: 22px; font-weight: 800; letter-spacing: 3px; color: #ff5f52; }
+.overlay .big { font-size: 68px; font-weight: 800; color: #7ddc8a; line-height: 1.1; margin-top: 6px; }
+.overlay .sub { font-size: 14px; color: #8b93a1; text-transform: uppercase; letter-spacing: 2px; }
+.overlay .stat { font-size: 14px; color: #d7dce3; margin: 16px 0 20px; }
+.overlay .btn { min-width: 140px; }
