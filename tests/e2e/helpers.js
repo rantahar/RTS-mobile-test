@@ -8,7 +8,10 @@ function requirePlaywright() {
   catch { return require('/opt/node22/lib/node_modules/playwright'); }
 }
 
-async function launchGame({ width = 390, height = 844 } = {}) {
+// seed: map seed to load. Defaults to 'none' (the legacy hand-placed layout)
+// so behavioral tests run on a known, terrain-free map; pass a number to
+// exercise a generated map.
+async function launchGame({ width = 390, height = 844, seed = 'none' } = {}) {
   const { chromium } = requirePlaywright();
   let browser;
   try {
@@ -25,7 +28,9 @@ async function launchGame({ width = 390, height = 844 } = {}) {
   const errors = [];
   page.on('pageerror', e => errors.push('pageerror: ' + e.message));
   page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
-  await page.goto('file://' + path.resolve(__dirname, '..', '..', 'index.html'));
+  const url = 'file://' + path.resolve(__dirname, '..', '..', 'index.html') +
+              (seed != null ? `?seed=${seed}` : '');
+  await page.goto(url);
   await page.waitForTimeout(300);
 
   // World coords -> page coords (for mouse input).

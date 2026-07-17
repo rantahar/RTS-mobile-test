@@ -58,8 +58,8 @@ const Hex = {
     return Math.max(Math.abs(dx), Math.abs(dz), Math.abs(-dx - dz));
   },
 
-  // No structure footprint within MARGIN px of the hex center (so unit
-  // circles never visually clip buildings).
+  // No blocked tile (structure footprint OR wall terrain) within MARGIN px of
+  // the hex center, so unit circles never visually clip buildings or rock.
   structFree(col, row) {
     if (!this.inBounds(col, row)) return false;
     const c = this.centerOf(col, row);
@@ -68,8 +68,7 @@ const Hex = {
     const ty0 = Math.floor((c.y - m) / T), ty1 = Math.floor((c.y + m) / T);
     for (let tx = tx0; tx <= tx1; tx++)
       for (let ty = ty0; ty <= ty1; ty++)
-        if (GameMap.inBounds(tx, ty) &&
-            GameMap.occupancy[GameMap.idx(tx, ty)] != null) return false;
+        if (GameMap.inBounds(tx, ty) && GameMap.tileBlocked(tx, ty)) return false;
     return true;
   },
 
