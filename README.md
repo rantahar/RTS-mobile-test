@@ -26,11 +26,17 @@ The rest of the bottom bar is **dynamic** — buttons come from the selection:
 
 | Selection | Buttons |
 |---|---|
-| Main building | Worker ◆10 (train) |
-| Barracks | Soldier ◆15 (train) |
+| Main building | Worker ◆40 (train) |
+| Barracks | Soldier ◆45 (train) |
 | Lab | Weapons L1/2/3 (research: +2 soldier damage per level) |
-| Worker(s) | Barracks ◆30, Lab ◆25 (build), Stop |
+| Worker(s) | Main Building ◆300, Barracks ◆110, Lab ◆90 (build), Stop |
 | Any units | Stop |
+
+Training is **queued and timed**: each tap on a train button pays up front and
+adds one unit to that building's queue (up to five), and units come out one at
+a time over their build time. The button shows the queue count `(n)` and the
+building shows a progress bar for the unit in production. The **main building**
+is itself buildable now (◆300) — expand with a second base near fresh ore.
 
 Combat: soldiers attack on command (tap an enemy) and auto-engage hostiles
 within their aggro radius. Attackers take free **range slots** around the
@@ -84,7 +90,8 @@ Model layer (DOM-free, headless-testable):
 - `js/sim.js` — simulation engine: dispatches `unit.cmd` to the type's
   handler; movement primitives (travel/approachRect), hex reservations,
   collision wait-and-repath (fine leg only); combat helpers (damage,
-  findTarget, attackDamage) and upgrade research state
+  findTarget, attackDamage), the per-building training queue, and upgrade
+  research state
 - `js/ai.js` — scripted opponent: trains soldiers on a timer, attacks in
   waves once enough stand idle
 

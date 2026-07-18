@@ -32,16 +32,26 @@ const CONFIG = {
     wheel: 'zoom',
   },
 
-  // Units / economy
+  // Units / economy. Costs are deliberately steep and training takes time, so
+  // the game ramps at a slower, more deliberate pace.
   WORKER_SPEED: 96, // world px per second (3 tiles/s)
   MINE_TIME: 1.2,   // seconds spent at the node per load
   CARRY: 5,         // ore per trip
-  WORKER_COST: 10,  // ore to train a worker at the main building
+  WORKER_COST: 40,  // ore to train a worker at a main building
+  WORKER_TRAIN_S: 5, // seconds to train a worker (queued)
 
   SOLDIER_SPEED: 80,   // a bit slower than workers
-  SOLDIER_COST: 15,    // ore to train a soldier at a barracks
-  BARRACKS_COST: 30,   // ore to place a barracks construction site
-  BARRACKS_BUILD: 10,  // worker-seconds of construction work to finish it
+  SOLDIER_COST: 45,    // ore to train a soldier at a barracks
+  SOLDIER_TRAIN_S: 7,  // seconds to train a soldier (queued)
+  BARRACKS_COST: 110,  // ore to place a barracks construction site
+  BARRACKS_BUILD: 12,  // worker-seconds of construction work to finish it
+
+  // Production queue: how many units can be waiting per building.
+  TRAIN_QUEUE_MAX: 5,
+
+  // Main building (Command Center): now player-buildable as a second base.
+  HQ_COST: 300,        // ore to place a command-center construction site
+  HQ_BUILD: 40,        // worker-seconds to construct it
 
   // Combat
   WORKER_HP: 30,
@@ -53,14 +63,14 @@ const CONFIG = {
   HQ_HP: 400,
   BARRACKS_HP: 220,
   LAB_HP: 160,
-  LAB_COST: 25,
-  LAB_BUILD: 8,        // worker-seconds to construct a lab
+  LAB_COST: 90,        // ore to place a lab construction site
+  LAB_BUILD: 10,       // worker-seconds to construct a lab
 
   // Upgrades (researched at the lab)
   WEAPON_BONUS: 2,       // +damage per weapons level
-  WEAPON_COST_BASE: 30,  // level 1 cost; each level adds WEAPON_COST_STEP
-  WEAPON_COST_STEP: 20,
-  WEAPON_TIME: 12,       // research seconds per level
+  WEAPON_COST_BASE: 70,  // level 1 cost; each level adds WEAPON_COST_STEP
+  WEAPON_COST_STEP: 45,
+  WEAPON_TIME: 14,       // research seconds per level
 
   // Enemy AI
   ENEMY_PRODUCE_S: 16, // seconds per enemy soldier

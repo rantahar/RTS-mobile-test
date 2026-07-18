@@ -21,6 +21,7 @@ const Sim = {
   hooks: {
     deposit(amount, unit) {},  // a worker delivered `amount` ore
     completed(structure) {},   // a construction site finished
+    trained(unit, building) {},    // a queued unit finished training
     attack(attacker, target) {},   // a swing landed (view: tracer flash)
     destroyed(entity) {},          // something was killed
     researched(structure, key) {}, // an upgrade finished at `structure`
@@ -46,8 +47,9 @@ const Sim = {
       if (e.kind === 'unit') {
         if (e.cmd) this.tickUnit(e, dt);
         else if (e.def.idle) e.def.idle(e, dt); // e.g. soldiers auto-acquire
-      } else if (e.research) {
-        this.tickResearch(e, dt);
+      } else {
+        if (e.research) this.tickResearch(e, dt);
+        if (e.queue && e.queue.length) this.tickTraining(e, dt);
       }
     }
   },
@@ -225,6 +227,38 @@ const Sim = {
     s.underConstruction = false;
     s.progress = s.def.buildTime;
     this.hooks.completed(s);
+  },
+
+  // ---- Training queue ----
+
+  // Add one unit to a building's production queue (payment is the caller's
+  // business). Returns false if it can't train or the queue is full.
+  enqueueTrain(b) {
+    if (!b.def.trains || b.underConstruction) return false;
+    if (!b.queue) b.queue = [];
+    if (b.queue.length >= CONFIG.TRAIN_QUEUE_MAX) return false;
+    b.queue.push(b.def.trains);
+    return true;
+  },
+
+  // Advance the front of the queue; spawn the unit when its time is up. If the
+  // building is walled in the finished unit waits (holds at full) and retries.
+  tickTraining(b, dt) {
+    b.trainT = (b.trainT || 0) + dt;
+    const total = Types[b.queue[0]].trainTime || 0;
+    if (b.trainT < total) return;
+    const u = Entities.trainAt(b);
+    if (!u) { b.trainT = total; return; } // no room to place: hold and retry
+    b.queue.shift();
+    b.trainT = 0;
+    this.hooks.trained(u, b);
+  },
+
+  // Fraction of the unit currently training (0 if the queue is empty).
+  trainProgress(b) {
+    if (!b.queue || !b.queue.length) return 0;
+    const total = Types[b.queue[0]].trainTime || 0;
+    return total ? Math.min(1, (b.trainT || 0) / total) : 1;
   },
 
   // ---- Combat ----

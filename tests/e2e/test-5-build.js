@@ -8,7 +8,8 @@ exports.run = async () => {
   const { page } = g;
   await g.center(672, 672); // the framing the coordinates below assume
 
-  await page.evaluate(() => { Game.ore = 100; Game.updateOre(); });
+  await page.evaluate(() => { Game.ore = 300; Game.updateOre(); });
+  const bcost = await page.evaluate(() => Types.barracks.cost);
 
   // Select one worker; the build button should appear, armed on tap.
   const w0 = (await g.units())[0];
@@ -37,7 +38,7 @@ exports.run = async () => {
   });
   assert(placed, 'no barracks site after valid placement tap');
   assert(placed.under, 'site not under construction');
-  assert(placed.ore === 70, `expected 70 ore after paying 30, got ${placed.ore}`);
+  assert(placed.ore === 300 - bcost, `expected ${300 - bcost} ore after paying ${bcost}, got ${placed.ore}`);
   assert(placed.builder, 'selected worker was not sent to build');
 
   // Wait for construction to actually progress, then fast-forward the tail.
@@ -67,13 +68,28 @@ exports.run = async () => {
   assert((await g.selInfo()).includes('Barracks'), 'barracks not selected: ' + await g.selInfo());
   assert(await page.evaluate(() => !!document.getElementById('btn-train-soldier')),
     'soldier train button missing');
+  const scost = await page.evaluate(() => Types.soldier.cost);
+  const stt = await page.evaluate(() => Types.soldier.trainTime);
+  const oreBefore = await page.evaluate(() => Game.ore);
   await page.click('#btn-train-soldier');
-  const trained = await page.evaluate(() => ({
+
+  // Queued and timed: paid now, soldier not spawned yet.
+  const queued = await page.evaluate(() => ({
     ore: Game.ore,
     soldiers: Entities.list.filter(e => e.type === 'soldier').length,
+    queue: (Entities.list.find(e => e.type === 'barracks' && e.owner === 0).queue || []).length,
+  }));
+  assert(queued.queue === 1, `expected 1 queued soldier, got ${queued.queue}`);
+  assert(queued.soldiers === 0, `training should not be instant, got ${queued.soldiers}`);
+  assert(queued.ore === oreBefore - scost, `expected ${oreBefore - scost} ore, got ${queued.ore}`);
+
+  await page.waitForTimeout((stt + 3) * 1000);
+  const trained = await page.evaluate(() => ({
+    soldiers: Entities.list.filter(e => e.type === 'soldier').length,
+    queue: (Entities.list.find(e => e.type === 'barracks' && e.owner === 0).queue || []).length,
   }));
   assert(trained.soldiers === 1, `expected 1 soldier, got ${trained.soldiers}`);
-  assert(trained.ore === 55, `expected 55 ore after training, got ${trained.ore}`);
+  assert(trained.queue === 0, `soldier queue not drained, got ${trained.queue}`);
 
   assert(g.errors.length === 0, 'console errors: ' + g.errors.join(' | '));
   await g.browser.close();

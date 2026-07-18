@@ -33,6 +33,10 @@ const Game = {
       this.pulse(s.x, s.y, 'goto');
       this.updateSelInfo(); // a selected site may now offer training
     };
+    Sim.hooks.trained = (u, b) => {
+      this.pulse(u.x, u.y, 'goto');
+      this.updateSelInfo(); // refresh the queue count on the train button
+    };
     Sim.hooks.attack = (a, t) => this.tracer(a, t);
     Sim.hooks.destroyed = (e) => this.pulse(e.x, e.y, 'attack');
     Sim.hooks.researched = (b, key) => {
@@ -195,15 +199,15 @@ const Game = {
 
   // ---- Training ----
 
-  // Train the unit type a specific building's type says it trains.
+  // Queue one unit at a building (pay up front). Each tap enqueues another,
+  // up to CONFIG.TRAIN_QUEUE_MAX; Sim trains them one at a time over time.
   trainUnit(b) {
     if (!b || !b.def.trains || b.underConstruction) return;
     const def = Types[b.def.trains];
     if (this.ore < def.cost) return;
-    const u = Entities.trainAt(b);
-    if (!u) return; // completely walled in
+    if (!Sim.enqueueTrain(b)) return; // queue full
     this.addOre(-def.cost);
-    this.pulse(u.x, u.y, 'goto');
+    this.updateSelInfo(); // refresh the queue count on the button
   },
 
   // Start researching an upgrade at a building (pay up front).
@@ -297,10 +301,11 @@ const Game = {
     }
     for (const b of trainers.values()) {
       const def = Types[b.def.trains];
+      const q = (b.queue && b.queue.length) || 0;
       btns.push({
         id: `btn-train-${b.def.trains}`,
-        label: `${def.name} ◆${def.cost}`,
-        disabled: this.ore < def.cost,
+        label: q ? `${def.name} ◆${def.cost} (${q})` : `${def.name} ◆${def.cost}`,
+        disabled: q >= CONFIG.TRAIN_QUEUE_MAX || this.ore < def.cost,
         onTap: () => this.trainUnit(b),
       });
     }

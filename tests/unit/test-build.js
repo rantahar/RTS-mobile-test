@@ -64,11 +64,12 @@ exports.tests = [
     a.cmd = { type: 'build', siteId: site.id };
     b.cmd = { type: 'build', siteId: site.id };
     let t = 0;
-    for (; t < 60 * 20 && site.underConstruction; t++) g.Sim.tick(DT);
+    for (; t < 60 * 30 && site.underConstruction; t++) g.Sim.tick(DT);
     assert(!site.underConstruction, 'pair never finished the site');
-    // buildTime is 10 worker-seconds; two adjacent workers should land well
-    // under 8s of wall clock even counting the short walk.
-    assert(t / 60 < 8, `two builders took ${(t / 60).toFixed(1)}s`);
+    // Two adjacent workers share the buildTime, so wall clock should land near
+    // buildTime/2 plus the short walk — comfortably under buildTime.
+    const bt = g.Types.barracks.buildTime;
+    assert(t / 60 < bt, `two builders took ${(t / 60).toFixed(1)}s (buildTime ${bt})`);
   }],
 
   ['barracks trains soldiers (registry data)', ({ loadGame, assert }) => {

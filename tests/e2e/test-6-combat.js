@@ -64,6 +64,7 @@ exports.run = async () => {
     Selection.setTo([lab]);
   });
   const oreBefore = await page.evaluate(() => Game.ore);
+  const wcost = await page.evaluate(() => Upgrades.weapons.cost(0)); // level-1 cost
   await page.click('#btn-up-weapons');
   const started = await page.evaluate(() => ({
     ore: Game.ore,
@@ -71,7 +72,7 @@ exports.run = async () => {
     disabled: document.getElementById('btn-up-weapons').disabled,
   }));
   assert(started.researching, 'research did not start');
-  assert(started.ore === oreBefore - 30, `research cost wrong (${oreBefore} -> ${started.ore})`);
+  assert(started.ore === oreBefore - wcost, `research cost wrong (${oreBefore} -> ${started.ore}, expected -${wcost})`);
   assert(started.disabled, 'upgrade button still enabled while researching');
   await page.evaluate(() => {
     const lab = Entities.list.find(e => e.type === 'lab');
