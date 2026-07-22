@@ -37,6 +37,10 @@ const Game = {
       this.pulse(b.x, b.y, 'goto');
       this.updateSelInfo(); // refresh the upgrade button's level/cost
     };
+    Sim.hooks.trained = (b, u) => {
+      if (u.owner === 0) this.pulse(u.x, u.y, 'goto');
+      this.updateSelInfo(); // refresh the queue count on the train button
+    };
     Selection.onChange = () => this.updateSelInfo();
 
     this.spawnStartLayout();
@@ -160,15 +164,20 @@ const Game = {
 
   // ---- Training ----
 
-  // Train the unit type a specific building's type says it trains.
+  // Queue a unit at a building: pay up front, produce over trainTime
+  // (Sim.tickProduction spawns it and fires hooks.trained).
   trainUnit(b) {
     if (!b || !b.def.trains || b.underConstruction) return;
     const def = Types[b.def.trains];
     if (this.ore < def.cost) return;
-    const u = Entities.trainAt(b);
-    if (!u) return; // completely walled in
+    if (!Sim.enqueueTrain(b, b.def.trains)) return; // queue full
     this.addOre(-def.cost);
-    this.pulse(u.x, u.y, 'goto');
+  },
+
+  // Remove the last queued unit and refund it.
+  cancelTrain(b) {
+    const type = Sim.cancelTrain(b);
+    if (type) this.addOre(Types[type].cost);
   },
 
   // Start researching an upgrade at a building (pay up front).
@@ -262,12 +271,20 @@ const Game = {
     }
     for (const b of trainers.values()) {
       const def = Types[b.def.trains];
+      const n = b.queue ? b.queue.length : 0;
       btns.push({
         id: `btn-train-${b.def.trains}`,
-        label: `${def.name} ◆${def.cost}`,
-        disabled: this.ore < def.cost,
+        label: `${def.name} ◆${def.cost}${n ? ` ×${n}` : ''}`,
+        disabled: this.ore < def.cost || n >= CONFIG.QUEUE_MAX,
         onTap: () => this.trainUnit(b),
       });
+      if (n) {
+        btns.push({
+          id: `btn-cancel-${b.def.trains}`,
+          label: '−',
+          onTap: () => this.cancelTrain(b),
+        });
+      }
     }
 
     // Upgrade buttons: one per upgrade key, on the first selected building

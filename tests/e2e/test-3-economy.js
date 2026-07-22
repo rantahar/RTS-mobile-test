@@ -18,15 +18,24 @@ exports.run = async () => {
   assert(distinct(miners.map(u => u.hex)), 'miners share a hex');
 
   // Training: the button only exists while an HQ is selected (dynamic bar).
-  await page.evaluate(() => { Game.ore = 25; Game.updateOre(); });
+  // Halt the miners first so deposits don't drift the ore count mid-check.
+  await page.evaluate(() => {
+    for (const e of Entities.list) if (e.kind === 'unit') Sim.stopUnit(e);
+    Game.ore = 25; Game.updateOre();
+  });
   await page.click('#btn-deselect');
   assert(await page.evaluate(() => !document.getElementById('btn-train-worker')),
     'train button shown with no HQ selected');
   await g.tapWorld(560, 656); // HQ
   assert(!await page.evaluate(() => document.getElementById('btn-train-worker').disabled),
     'train disabled with HQ selected and ore');
+  await page.evaluate(() => { Types.worker.trainTime = 0.3; }); // fast production
   await page.click('#btn-train-worker');
   await page.click('#btn-train-worker');
+  const queued = await page.evaluate(() =>
+    Entities.list.find(e => e.type === 'hq').queue.length);
+  assert(queued === 2, `expected 2 queued workers, got ${queued}`);
+  await page.waitForTimeout(1000); // both produce
   const after = await page.evaluate(() => ({
     ore: Game.ore,
     n: Entities.list.filter(e => e.type === 'worker').length,

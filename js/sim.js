@@ -24,6 +24,7 @@ const Sim = {
     attack(attacker, target) {},   // a swing landed (view: tracer flash)
     destroyed(entity) {},          // something was killed
     researched(structure, key) {}, // an upgrade finished at `structure`
+    trained(structure, unit) {},   // a queued unit finished production
   },
   upgrades: {}, // "owner:key" -> researched level
   REPATH_WAIT: 0.1,           // blocked "thinking time" before replanning the leg
@@ -46,8 +47,11 @@ const Sim = {
       if (e.kind === 'unit') {
         if (e.cmd) this.tickUnit(e, dt);
         else if (e.def.idle) e.def.idle(e, dt); // e.g. soldiers auto-acquire
-      } else if (e.research) {
-        this.tickResearch(e, dt);
+      } else {
+        if (e.research) this.tickResearch(e, dt);
+        if (e.queue && e.queue.length && !e.underConstruction) {
+          this.tickProduction(e, dt);
+        }
       }
     }
   },
@@ -225,6 +229,38 @@ const Sim = {
     s.underConstruction = false;
     s.progress = s.def.buildTime;
     this.hooks.completed(s);
+  },
+
+  // ---- Production (unit queue on training buildings) ----
+
+  // Add a unit to a building's production queue. Payment is the caller's
+  // business (Game pays ore; the AI queues for free on its own timer).
+  enqueueTrain(b, type) {
+    if (!b.queue || b.underConstruction) return false;
+    if (b.queue.length >= CONFIG.QUEUE_MAX) return false;
+    b.queue.push(type);
+    if (b.queue.length === 1) b.trainT = Types[type].trainTime;
+    return true;
+  },
+
+  // Drop the LAST queued unit (cancelling the current one when it is alone).
+  // Returns the type for the caller to refund, or null.
+  cancelTrain(b) {
+    if (!b.queue || !b.queue.length) return null;
+    const type = b.queue.pop();
+    if (!b.queue.length) b.trainT = 0;
+    return type;
+  },
+
+  tickProduction(b, dt) {
+    b.trainT -= dt;
+    if (b.trainT > 0) return;
+    b.trainT = 0;
+    const u = Entities.trainAt(b); // walled in -> null; retry next tick
+    if (!u) return;
+    b.queue.shift();
+    if (b.queue.length) b.trainT = Types[b.queue[0]].trainTime;
+    this.hooks.trained(b, u);
   },
 
   // ---- Combat ----

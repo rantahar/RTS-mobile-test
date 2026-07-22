@@ -35,6 +35,8 @@ const Entities = {
       progress: 0, // worker-seconds of construction done (sites only)
       hp: def.hp || null, // null = indestructible (e.g. resource nodes)
       maxHp: def.hp || null,
+      queue: def.trains ? [] : null, // unit types waiting to be produced
+      trainT: 0, // production seconds left on the head of the queue
     };
     // Mark footprint tiles occupied (pathfinding obstacles).
     for (let y = ty; y < ty + h; y++)
@@ -81,8 +83,8 @@ const Entities = {
   },
 
   // Spawn the unit a building's type trains, on the best free hex by its
-  // "door" (bottom edge). Payment is the caller's business (Game for the
-  // player, AI for the enemy). Returns the unit, or null if walled in.
+  // "door" (bottom edge). Called by Sim when production finishes.
+  // Returns the unit, or null if walled in (Sim retries until space frees).
   trainAt(b) {
     const hc = Hex.fromWorld(b.x, b.y + (b.h / 2) * CONFIG.TILE);
     const h = hc && Hex.bestAdjacent(b, hc.col, hc.row, null);

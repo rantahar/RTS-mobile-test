@@ -100,6 +100,7 @@ exports.tests = [
   ['AI produces on its timer and attacks with a full wave', ({ loadGame, assert }) => {
     const g = loadGame();
     g.CONFIG.ENEMY_PRODUCE_S = 0.5; // speed the test up
+    g.Types.soldier.trainTime = 0.3;
     const hq = g.Entities.spawnStructure('hq', 15, 18, 0);
     g.Entities.spawnStructure('barracks', 34, 33, 1);
     ticks(g, 20); // 0.33s: under one production interval
@@ -117,6 +118,7 @@ exports.tests = [
   ['AI stops when its base is destroyed', ({ loadGame, assert }) => {
     const g = loadGame();
     g.CONFIG.ENEMY_PRODUCE_S = 0.2;
+    g.Types.soldier.trainTime = 0.2;
     g.Entities.spawnStructure('hq', 15, 18, 0);
     const base = g.Entities.spawnStructure('barracks', 34, 33, 1);
     ticks(g, 60);

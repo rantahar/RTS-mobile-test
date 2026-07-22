@@ -33,8 +33,12 @@ const CONFIG = {
   CARRY: 5,         // ore per trip
   WORKER_COST: 10,  // ore to train a worker at the main building
 
+  WORKER_TRAIN_S: 5,   // production seconds per worker
+  QUEUE_MAX: 5,        // max units queued at one building
+
   SOLDIER_SPEED: 80,   // a bit slower than workers
   SOLDIER_COST: 15,    // ore to train a soldier at a barracks
+  SOLDIER_TRAIN_S: 8,  // production seconds per soldier
   BARRACKS_COST: 30,   // ore to place a barracks construction site
   BARRACKS_BUILD: 10,  // worker-seconds of construction work to finish it
 
@@ -58,7 +62,7 @@ const CONFIG = {
   WEAPON_TIME: 12,       // research seconds per level
 
   // Enemy AI
-  ENEMY_PRODUCE_S: 16, // seconds per enemy soldier
+  ENEMY_PRODUCE_S: 8,  // pause between queueing soldiers (train time adds on top)
   ENEMY_WAVE: 3,       // idle soldiers needed before it attacks
   ENEMY_CAP: 6,        // max simultaneous enemy soldiers
 };

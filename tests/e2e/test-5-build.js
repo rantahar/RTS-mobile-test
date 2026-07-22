@@ -67,7 +67,17 @@ exports.run = async () => {
   assert((await g.selInfo()).includes('Barracks'), 'barracks not selected: ' + await g.selInfo());
   assert(await page.evaluate(() => !!document.getElementById('btn-train-soldier')),
     'soldier train button missing');
+  await page.evaluate(() => { Types.soldier.trainTime = 0.4; }); // fast production
   await page.click('#btn-train-soldier');
+  const queued = await page.evaluate(() => ({
+    ore: Game.ore,
+    label: document.getElementById('btn-train-soldier').textContent,
+  }));
+  assert(queued.ore === 55, `ore not paid on enqueue (${queued.ore})`);
+  assert(queued.label.includes('×1'), `queue count missing from button: ${queued.label}`);
+  assert(await page.evaluate(() => !!document.getElementById('btn-cancel-soldier')),
+    'cancel button missing while queued');
+  await page.waitForTimeout(800); // production completes
   const trained = await page.evaluate(() => ({
     ore: Game.ore,
     soldiers: Entities.list.filter(e => e.type === 'soldier').length,

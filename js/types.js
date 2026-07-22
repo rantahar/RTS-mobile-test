@@ -105,6 +105,7 @@ const Types = {
     radius: 0.42,               // body radius in tiles
     speed: CONFIG.WORKER_SPEED, // world px per second
     cost: CONFIG.WORKER_COST,
+    trainTime: CONFIG.WORKER_TRAIN_S,
     hp: CONFIG.WORKER_HP,
     builds: ['barracks', 'lab'], // structures this unit can construct
     svg(e) {
@@ -181,6 +182,7 @@ const Types = {
     radius: 0.42,
     speed: CONFIG.SOLDIER_SPEED,
     cost: CONFIG.SOLDIER_COST,
+    trainTime: CONFIG.SOLDIER_TRAIN_S,
     hp: CONFIG.SOLDIER_HP,
     damage: CONFIG.SOLDIER_DMG,
     rate: CONFIG.SOLDIER_RATE,   // seconds between swings

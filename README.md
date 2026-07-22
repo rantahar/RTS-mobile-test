@@ -26,11 +26,16 @@ The rest of the bottom bar is **dynamic** — buttons come from the selection:
 
 | Selection | Buttons |
 |---|---|
-| Main building | Worker ◆10 (train) |
-| Barracks | Soldier ◆15 (train) |
+| Main building | Worker ◆10 (train, 5s) |
+| Barracks | Soldier ◆15 (train, 8s) |
 | Lab | Weapons L1/2/3 (research: +2 soldier damage per level) |
 | Worker(s) | Barracks ◆30, Lab ◆25 (build), Stop |
 | Any units | Stop |
+
+Training queues (up to 5 per building): ore is paid when a unit is queued,
+the button shows the queue as ×N, and a − button cancels the last queued
+unit with a refund. The building shows a production progress bar; the enemy
+produces through the same pipeline.
 
 Combat: soldiers attack on command (tap an enemy) and auto-engage hostiles
 within their aggro radius. Attackers take free **range slots** around the

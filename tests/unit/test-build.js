@@ -71,6 +71,41 @@ exports.tests = [
     assert(t / 60 < 8, `two builders took ${(t / 60).toFixed(1)}s`);
   }],
 
+  ['production takes trainTime and works through the queue', ({ loadGame, assert }) => {
+    const g = loadGame();
+    let trained = [];
+    g.Sim.hooks.trained = (b, u) => trained.push(u);
+    const hq = g.Entities.spawnStructure('hq', 15, 18);
+    const t = g.Types.worker.trainTime;
+    assert(g.Sim.enqueueTrain(hq, 'worker'), 'enqueue failed');
+    assert(g.Sim.enqueueTrain(hq, 'worker'), 'second enqueue failed');
+    const count = () => g.Entities.list.filter(e => e.type === 'worker').length;
+    ticks(g, Math.floor(60 * (t - 0.2)));
+    assert(count() === 0, 'unit appeared before its train time');
+    ticks(g, Math.ceil(60 * 0.5));
+    assert(count() === 1, `expected 1 unit after ${t}s, got ${count()}`);
+    assert(hq.queue.length === 1, 'queue did not advance');
+    ticks(g, Math.ceil(60 * t));
+    assert(count() === 2 && hq.queue.length === 0, 'second unit never produced');
+    assert(trained.length === 2, 'trained hook fired wrong number of times');
+  }],
+
+  ['queue caps, rejects sites, and cancel resets the timer', ({ loadGame, assert }) => {
+    const g = loadGame();
+    const hq = g.Entities.spawnStructure('hq', 15, 18);
+    for (let i = 0; i < g.CONFIG.QUEUE_MAX; i++) {
+      assert(g.Sim.enqueueTrain(hq, 'worker'), `enqueue ${i} failed`);
+    }
+    assert(!g.Sim.enqueueTrain(hq, 'worker'), 'queue exceeded QUEUE_MAX');
+    for (let i = 0; i < g.CONFIG.QUEUE_MAX; i++) {
+      assert(g.Sim.cancelTrain(hq) === 'worker', 'cancel returned wrong type');
+    }
+    assert(g.Sim.cancelTrain(hq) === null, 'cancel on empty queue returned a type');
+    assert(hq.queue.length === 0 && hq.trainT === 0, 'cancel left state behind');
+    const site = g.Entities.spawnStructure('barracks', 30, 30, 0, true);
+    assert(!g.Sim.enqueueTrain(site, 'soldier'), 'construction site accepted a queue');
+  }],
+
   ['barracks trains soldiers (registry data)', ({ loadGame, assert }) => {
     const g = loadGame();
     assert(g.Types.barracks.trains === 'soldier', 'barracks should train soldiers');

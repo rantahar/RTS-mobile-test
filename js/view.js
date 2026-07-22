@@ -53,10 +53,14 @@ const View = {
     g._hpW = w;
   },
 
-  // Fraction of structure work in progress (construction or research).
+  // Fraction of structure work in progress (construction, research, or
+  // unit production).
   _progressFrac(e) {
     if (e.underConstruction) return Math.min(1, e.progress / e.def.buildTime);
     if (e.research) return Math.min(1, e.research.t / e.research.total);
+    if (e.queue && e.queue.length) {
+      return 1 - e.trainT / Types[e.queue[0]].trainTime;
+    }
     return null;
   },
 

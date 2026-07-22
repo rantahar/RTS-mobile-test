@@ -19,9 +19,12 @@ const AI = {
     const army = Entities.list.filter(e =>
       e.kind === 'unit' && e.owner === this.owner);
 
+    // Queue one soldier at a time through the normal production pipeline
+    // (so the enemy pays train time like the player, minus the ore).
     this.t += dt;
-    if (this.t >= CONFIG.ENEMY_PRODUCE_S && army.length < CONFIG.ENEMY_CAP) {
-      if (Entities.trainAt(base)) this.t = 0;
+    if (this.t >= CONFIG.ENEMY_PRODUCE_S && !base.queue.length &&
+        army.length < CONFIG.ENEMY_CAP) {
+      if (Sim.enqueueTrain(base, base.def.trains)) this.t = 0;
     }
 
     // Wave: enough idle soldiers gathered -> everyone attacks. auto:true so
